@@ -195,17 +195,14 @@ def usingList(): return using, ZeroOrMore(Optional(emptySpace), using)
 def program(): return Optional(emptySpace), Optional(usingList), globalCode, EOF
 
 
-parser = ParserPython(program, ws = "\t\r ", autokwd = True, reduce_tree = False)
-with open(input()) as testFile:
-    testCode = testFile.read()
+parser = ParserPython(program, ws = "\t\r ", autokwd = True, reduce_tree = False, memoization = True)
+with open(input()) as file:
+    code = file.read()
 try:
-    result = parser.parse(testCode)
+    result = parser.parse(code)
 except Exception as e:
     print(e, file=sys.stderr)
     sys.exit()
-#print("Test code: \n" + testCode)
-#print("\nResult:\n" + str(result))
-#PTDOTExporter().exportFile(result, "test.dot")
 
 def semiSerialise(nonTerminal):
     rule = nonTerminal.rule_name
