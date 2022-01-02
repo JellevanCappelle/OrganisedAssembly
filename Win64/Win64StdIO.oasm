@@ -1,0 +1,61 @@
+using Kernel32
+
+namespace Runtime
+{
+	function init()
+	{
+		StandardIO.init()
+		return
+	}
+
+	namespace StandardIO
+	{
+		constant stdinNum = -10
+		constant stdoutNum = -11
+		constant stderrNum = -12
+		constant utf8CodePage = 65001
+
+		dword [stdin] = 0
+		dword [stdout] = 0
+		dword [stderr] = 0
+		
+		function init()
+		{
+			[stdin] = GetStdHandle(stdinNum)
+			[stdout] = GetStdHandle(stdoutNum)
+			[stderr] = GetStdHandle(stderrNum)
+			SetConsoleOutputCP(utf8CodePage)
+			return
+		}
+
+		function input(qword [buffer], dword [bufSize])
+		{
+			dec [bufSize] # keep space for terminating 0
+			
+			# read a line
+			dword [len]
+			ReadFile([stdin], [buffer], [bufSize], ref [len], 0)
+			
+			# add terminating zero
+			xor rax, rax
+			mov eax, [len]
+			mov rbx, [buffer]
+			mov byte [rbx + rax], 0
+			return eax
+		}
+
+		function output(qword [buffer], dword [length])
+		{
+			dword [garbage]
+			WriteFile([stdout], [buffer], [length], ref [garbage], 0)
+			return
+		}
+		
+		function debug(qword [buffer], dword [length])
+		{
+			dword [garbage]
+			WriteFile([stderr], [buffer], [length], ref [garbage], 0)
+			return
+		}
+	}
+}
