@@ -5,3 +5,5 @@
 
 ## Usage
 `oasm <path/to/project.json>`, TODO: describe the format of project files
+
+Example projects are available [here](https://github.com/JellevanCappelle/OASM-Examples).
