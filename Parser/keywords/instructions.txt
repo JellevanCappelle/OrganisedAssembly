@@ -258,6 +258,7 @@ r8
 rcl
 rcr
 rdmsr
+rdrand
 rdseed
 rep
 repe

@@ -22,6 +22,10 @@ namespace OrganisedAssembly.Kernel
 
 		public override void Compile()
 		{
+			// create directories in case they didn't exist yet
+			Directory.CreateDirectory(tempFolder);
+			Directory.CreateDirectory(cacheFolder);
+
 			// initialise .text, .data and .bss sections
 			Dictionary<String, StreamWriter> sections = new Dictionary<String, StreamWriter>()
 			{
