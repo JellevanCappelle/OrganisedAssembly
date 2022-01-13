@@ -41,6 +41,7 @@ for suf in conditionSuffixes:
     ifKeywords += ["if" + suf, "ifn" + suf]
     forKeywords += ["for" + suf, "forn" + suf]
     whileKeywords += ["while" + suf, "whilen" + suf]
+    instructionKeyword += ["set" + suf, "setn" + suf]
 	
 sizeKeywords = ["byte", "word", "dword", "qword"]
 stringSizeKeywords = [kwd + 's' for kwd in sizeKeywords]

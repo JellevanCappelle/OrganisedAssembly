@@ -232,7 +232,9 @@ movsb
 movsd
 movsq
 movsw
+movsx
 movsxd
+movzx
 mul
 neg
 nop
