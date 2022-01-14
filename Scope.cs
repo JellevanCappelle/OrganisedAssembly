@@ -19,7 +19,7 @@ namespace OrganisedAssembly
 
 	interface Scope
 	{
-		String Name { get; }
+		Identifier Name { get; }
 		bool IsAnonymous { get; }
 		Dictionary<String, object> PersistentData { get; }
 
@@ -34,19 +34,14 @@ namespace OrganisedAssembly
 		void ResetAnonymous();
 
 		/// <summary>
-		/// Returns whether a variable exists in this scope.
-		/// </summary>
-		bool SymbolExists(String[] path);
-
-		/// <summary>
 		/// Returns a variable/constant/function, or null if the symbol does not exist.
 		/// </summary>
-		Symbol GetSymbol(String[] path);
+		Symbol GetSymbol(params Identifier[] path);
 
 		/// <summary>
 		/// Declares a constant/function.
 		/// </summary>
-		void DeclareSymbol(String name, Symbol symbol);
+		void DeclareSymbol(Identifier name, Symbol symbol);
 	}
 
 	abstract class BaseScope

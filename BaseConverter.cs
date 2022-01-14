@@ -68,13 +68,13 @@ namespace OrganisedAssembly
 		{
 			("singleQuoteString", str => StringToNasm(str.Flatten())),
 			("sizeof", sizeOf => SizeOf(sizeOf, compiler).ToString()),
-			("identifierPath", id => compiler.ResolveSymbol(id.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray())),
+			("identifierPath", id => compiler.ResolveSymbol(new UnresolvedPath(id))),
 			("aliasDecl", alias => compiler.ResolveSymbol(alias.GetNonterminal("identifier")?.Flatten() ?? throw new LanguageException($"Encountered malformed alias declaration: '{alias.Flatten()}'.")))
 		});
 
 		protected String GetLabelString(ICompiler compiler, String name)
 		{
-			return "L" + compiler.GetUID() + "_" + String.Join('_', compiler.GetCurrentPath()) + "_" + name;
+			return "L" + compiler.GetUID() + "_" + String.Join<Identifier>('_', compiler.GetCurrentPath()) + "_" + name;
 		}
 
 		public static SizeSpecifier ParseSize(String str)
@@ -84,11 +84,10 @@ namespace OrganisedAssembly
 			return sizeLookup[str];
 		}
 
-
 		/// <summary>
 		/// Returns the path if only a single symbol is referenced, or null otherwise.
 		/// </summary>
-		protected String[] MemoryReferenceToPath(JsonProperty address)
+		protected Identifier[] MemoryReferenceToPath(JsonProperty address, ICompiler compiler)
 		{
 			// verify that the address is a single identifier path
 			if(address.GetNonterminal("segAddress") == null) return null;
@@ -107,13 +106,13 @@ namespace OrganisedAssembly
 			if(address.GetNonterminal("identifierPath") == null) return null;
 			
 			address = (JsonProperty)address.GetChildNonterminal();
-			return address.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray();
+			return new UnresolvedPath(address).Resolve(compiler);
 		}
 
 		/// <summary>
 		/// Checks if this expression is just a single path, and returns it if that's the case. Returns null otherwise.
 		/// </summary>
-		protected String[] ExpressionToPath(JsonProperty expr)
+		protected Identifier[] ExpressionToPath(JsonProperty expr, ICompiler compiler)
 		{
 			if(expr.GetNonterminal("exprTerm") == null) return null;
 			expr = (JsonProperty)expr.GetNonterminal("exprTerm");
@@ -122,7 +121,7 @@ namespace OrganisedAssembly
 			if(expr.GetNonterminal("identifierPath") == null) return null;
 
 			expr = (JsonProperty)expr.GetChildNonterminal();
-			return expr.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray();
+			return new UnresolvedPath(expr).Resolve(compiler);
 		}
 
 		protected String StringToNasm(String literal)
@@ -187,15 +186,14 @@ namespace OrganisedAssembly
 
 		protected int SizeOf(JsonProperty sizeOf, ICompiler compiler)
 		{
-			String[] path = sizeOf.GetNonterminal("identifierPath")?.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray();
-			if(path == null)
-				throw new LanguageException($"Malformed sizeof operator: '{sizeOf.Flatten()}'");
+			UnresolvedPath path = new UnresolvedPath(sizeOf.GetNonterminal("identifierPath")
+								  ?? throw new LanguageException($"Malformed sizeof operator: '{sizeOf.Flatten()}'"));
 
 			Symbol type = compiler.ResolveSymbol(path);
 			if(type is TypeSymbol)
 				return (type as TypeSymbol).SizeOfInstance;
 			else
-				throw new LanguageException($"'{String.Join('.', path)}' is not a type.");
+				throw new LanguageException($"'{path}' is not a type.");
 		}
 
 		/// <summary>
@@ -263,7 +261,7 @@ namespace OrganisedAssembly
 						OperandType.Memory);
 
 				// try to find implicit size
-				if(MemoryReferenceToPath(arg) is String[] path)
+				if(MemoryReferenceToPath(arg, compiler) is Identifier[] path)
 				{
 					Symbol var = compiler.ResolveSymbol(path);
 					SymbolString nasmRep = "[" + var + "]";
@@ -278,7 +276,7 @@ namespace OrganisedAssembly
 			else if(arg.Name == "immArgument")
 			{
 				// check if it's an aliased register
-				if(ExpressionToPath((JsonProperty)arg.GetNonterminal("expr")) is String[] path)
+				if(ExpressionToPath((JsonProperty)arg.GetNonterminal("expr"), compiler) is Identifier[] path)
 					if(compiler.ResolveSymbol(path) is AliasSymbol alias)
 						return alias.Register;
 
@@ -316,12 +314,12 @@ namespace OrganisedAssembly
 			// check if the return target needs to be declared first
 			if(mem != null && retSize != null)
 			{
-				String[] path = MemoryReferenceToPath((JsonProperty)mem);
+				Identifier[] path = MemoryReferenceToPath((JsonProperty)mem, compiler);
 				if(path?.Length == 1)
 				{
 					// the return target is a variable in the current scope of which the size is known -> declare it if it doesn't exist yet (local scopes only)
 					ValueType type = new ValueType((JsonProperty)retSize);
-					String name = path[0];
+					Identifier name = path[0];
 					if(compiler.IsLocal && !compiler.IsStackVariable(name))
 					{
 						type.Solve(compiler);
@@ -385,7 +383,7 @@ namespace OrganisedAssembly
 		{
 			JsonProperty target = call.GetNonterminal("identifierPath")
 								  ?? throw new LanguageException("Encountered malformed ABI call.");
-			String[] targetPath = target.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray();
+			UnresolvedPath targetPath = new UnresolvedPath(target);
 			JsonProperty[] argumentList = call.GetNonterminal("argumentList")?.GetNonterminals("argument").ToArray();
 			JsonProperty[] returnTargetList = call.GetNonterminal("abiAssignment")?.GetNonterminal("returnTargetList")?.GetNonterminals("returnTarget").ToArray();
 
@@ -419,10 +417,10 @@ namespace OrganisedAssembly
 		{
 			LanguageException malformed = new LanguageException("Malformed non-static method call.");
 			JsonProperty reference = call.GetNonterminal("structReference") ?? throw malformed;
-			String[] structPath = reference.GetNonterminal("directPointer")?.GetNonterminal("identifierPath")?.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray();
-			String[] typePath = structPath != null ? null : (reference.GetChildNonterminal()?.GetNonterminal("identifierPath")?.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray()
-															?? throw malformed);
-			String[] methodPath = call.GetNonterminal("identifierPath")?.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray();
+			UnresolvedPath structPath = new UnresolvedPath(reference.GetNonterminal("directPointer")?.GetNonterminal("identifierPath"));
+			UnresolvedPath typePath = structPath.IsNull ? new UnresolvedPath(reference.GetChildNonterminal()?.GetNonterminal("identifierPath")
+																			 ?? throw malformed) : null;
+			UnresolvedPath methodPath = new UnresolvedPath(call.GetNonterminal("identifierPath"));
 			JsonProperty[] argumentList = call.GetNonterminal("argumentList")?.GetNonterminals("argument").ToArray();
 			JsonProperty[] returnTargetList = call.GetNonterminal("abiAssignment")?.GetNonterminal("returnTargetList")?.GetNonterminals("returnTarget").ToArray();
 
@@ -434,32 +432,32 @@ namespace OrganisedAssembly
 					TypeSymbol structType;
 					LanguageException invalidMethod;
 					Operand structOperand;
-					if(structPath != null) // direct pointer to a struct
+					if(!structPath.IsNull) // direct pointer to a struct
 					{
 						Symbol structSymbol = compiler.ResolveSymbol(structPath);
-						structType = (structSymbol as TypedSymbol)?.Type.Type ?? throw new LanguageException($"Type unknown for '{String.Join('.', structPath)}'.");
-						invalidMethod = new LanguageException($"'{String.Join('.', methodPath)}()' is not a valid non-static method of struct '[{String.Join('.', structPath)}]'.");
+						structType = (structSymbol as TypedSymbol)?.Type.Type ?? throw new LanguageException($"Type unknown for '{structPath}'.");
+						invalidMethod = new LanguageException($"'{methodPath}()' is not a valid non-static method of struct '[{structPath}]'.");
 						structOperand = new Operand(structType.Size, "[" + structSymbol + "]", OperandType.Memory);
 					}
 					else // casted pointer to a struct
 					{
-						structType = (compiler.ResolveSymbol(typePath) as TypeSymbol) ?? throw new LanguageException($"Type unknown: '{String.Join('.', typePath)}'.");
-						invalidMethod = new LanguageException($"'{String.Join('.', methodPath)}()' is not a valid non-static method of type '[{String.Join('.', typePath)}]'.");
+						structType = (compiler.ResolveSymbol(typePath) as TypeSymbol) ?? throw new LanguageException($"Type unknown: '{typePath}'.");
+						invalidMethod = new LanguageException($"'{methodPath}()' is not a valid non-static method of type '[{typePath}]'.");
 						JsonProperty cast = reference.GetChildNonterminal() ?? throw malformed;
 						if(cast.Name == "regPointerCast")
 							structOperand = new Operand(cast.GetNonterminal("gpRegister")?.Flatten() ?? throw malformed);
 						else
 							structOperand = new Operand(structType.Size, "[" + Resolve(cast.GetNonterminal("segAddress") ?? throw malformed, compiler) + "]", OperandType.Memory);
 					}
-					Symbol method = structType.MemberScope.GetSymbol(methodPath);
+					Symbol method = structType.MemberScope.GetSymbol(methodPath.Resolve(compiler));
 
 					// verify that this is a valid non-static method
 					FunctionMetadata metadata = (method as FunctionSymbol)?.Metadata ?? throw invalidMethod;
 					if(metadata.parameters.Length == 0) throw invalidMethod;
 					if(metadata.parameters[0].type.Type != structType || metadata.parameters[0].name != "this") throw invalidMethod;
-					int argumentCount = (argumentList != null ? argumentList.Length : 0);
+					int argumentCount = argumentList != null ? argumentList.Length : 0;
 					if(argumentCount != metadata.parameters.Length - 1)
-						throw new LanguageException($"Parameter count mismatch: '{String.Join('.', methodPath)}()' expects {metadata.parameters.Length - 1} parameters, got {argumentCount}.");
+						throw new LanguageException($"Parameter count mismatch: '{methodPath}()' expects {metadata.parameters.Length - 1} parameters, got {argumentCount}.");
 
 					// convert everything to operands
 					Operand[] arguments = argumentList != null ? new Operand[argumentList.Length + 1] : new Operand[1];
@@ -480,22 +478,38 @@ namespace OrganisedAssembly
 		protected IEnumerable<(ValueType size, String name)> ParseParameterList(JsonProperty? parameterList) => parameterList?.GetNonterminals("parameter").Select(par =>
 			{
 				ValueType size = new ValueType(par.GetNonterminal("sizeOrType")
-									?? throw new LanguageException($"Malformed parameter: {par.Flatten()}."));
+								 ?? throw new LanguageException($"Malformed parameter: {par.Flatten()}."));
 				String name = par.GetNonterminal("identifier")?.Flatten()
-								?? throw new LanguageException($"Malformed parameter: {par.Flatten()}.");
+							  ?? throw new LanguageException($"Malformed parameter: {par.Flatten()}.");
 				return (size, name);
 			});
 
 		void ConverNamespace(JsonProperty node, LinkedList<CompilerAction> program)
 		{
-			String[] path = node.GetNonterminal("namespaceDeclaration")?.GetNonterminal("identifierPath")?.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray()
-							?? throw new LanguageException("Encountered malformed namespace.");
+			Identifier[] path = new UnresolvedPath(node.GetNonterminal("namespaceDeclaration")?.GetNonterminal("identifierPath")
+												   ?? throw new LanguageException("Encountered malformed namespace.")
+								).ResolveParameterless()
+								?? throw new LanguageException("Encountered namespace with template parameters in its name.");
 			JsonProperty body = node.GetNonterminal("namespaceBody")
 								?? throw new LanguageException("Encountered namespace without body.");
 
 			program.AddLast((compiler, pass) => compiler.EnterGlobal(path));
 			ConvertNode(body, program);
 			program.AddLast((compiler, pass) => compiler.ExitGlobal());
+		}
+
+		void ConvertUsing(JsonProperty node, LinkedList<CompilerAction> program)
+		{
+			Identifier[] path = new UnresolvedPath(node.GetNonterminal("identifierPath")
+												   ?? throw new LanguageException($"Malformed using statement: '{node.Flatten()}'."))
+								.ResolveParameterless()
+								?? throw new LanguageException($"Attempted to use template parameters in using statement: '{node.Flatten()}'.");
+
+			program.AddLast((compiler, pass) =>
+			{
+				if(pass != CompilationStep.DeclareGlobalSymbols)
+					compiler.UsingScope(path);
+			});
 		}
 
 		void ConvertEnum(JsonProperty node, LinkedList<CompilerAction> program)
@@ -664,18 +678,6 @@ namespace OrganisedAssembly
 
 			// generate function
 			GenerateFunction(name, parameters, body, program);
-		}
-
-		void ConvertUsing(JsonProperty node, LinkedList<CompilerAction> program)
-		{
-			String[] path = node.GetNonterminal("identifierPath")?.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray()
-							?? throw new LanguageException($"Malformed using statement: {node.Flatten()}.");
-
-			program.AddLast((compiler, pass) =>
-			{
-				if(pass != CompilationStep.DeclareGlobalSymbols)
-					compiler.UsingScope(path);
-			});
 		}
 
 		void ConvertStatement(JsonProperty node, LinkedList<CompilerAction> program)

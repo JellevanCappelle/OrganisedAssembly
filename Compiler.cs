@@ -31,14 +31,14 @@ namespace OrganisedAssembly
 
 		void EnterFile(String file);
 		void ExitFile();
-		void UsingScope(params String[] path);
+		void UsingScope(params Identifier[] path);
 
-		void EnterGlobal(params String[] path);
+		void EnterGlobal(params Identifier[] path);
 		void ExitGlobal();
-		String[] GetCurrentPath();
+		Identifier[] GetCurrentPath();
 		TypeSymbol GetCurrentAssociatedType();
 
-		void EnterLocal(String name);
+		void EnterLocal(Identifier name);
 		void ExitLocal();
 		bool IsLocal { get; }
 
@@ -49,18 +49,20 @@ namespace OrganisedAssembly
 
 		void DeclarePosition(int line, int column);
 
-		void DeclareVariable(ValueType type, String name);
+		void DeclareVariable(ValueType type, Identifier name);
 		void AllocateDummyVariable(int size);
-		void DeclareExistingStackVariable(ValueType type, String name, int offset);
-		void DeclareConstant(String name, String nasmRepresentation, ValueType type = null);
-		void DeclareFunction(String name, String label, FunctionMetadata metadata);
-		PlaceholderSymbol DeclarePlaceholder(String name, Func<Symbol> resolve);
+		void DeclareExistingStackVariable(ValueType type, Identifier name, int offset);
+		void DeclareConstant(Identifier name, String nasmRepresentation, ValueType type = null);
+		void DeclareFunction(Identifier name, String label, FunctionMetadata metadata);
+		PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<Symbol> resolve);
+		PlaceholderSymbol DeclareFunctionPlaceholder(Identifier name, Func<FunctionSymbol> resolve);
 		void AddAnonymousPlaceholder(PlaceholderSymbol placeholder);
 		void DeclareDependency(PlaceholderSymbol dependency, PlaceholderSymbol dependent);
-		void DeclareType(String name, TypeSymbol type);
-		Operand SetRegisterAlias(String name, String register);
-		bool IsStackVariable(String name);
-		Symbol ResolveSymbol(params String[] path);
+		void DeclareType(Identifier name, TypeSymbol type);
+		Operand SetRegisterAlias(Identifier name, String register);
+		bool IsStackVariable(Identifier name);
+		Symbol ResolveSymbol(UnresolvedPath path);
+		Symbol ResolveSymbol(params Identifier[] path);
 
 		int GetStackSize();
 		void SetStackSize(int size);
@@ -93,6 +95,7 @@ namespace OrganisedAssembly
 		protected Scope CurrentScope => scopeStack.Peek();
 		public bool IsLocal => CurrentScope is LocalScope;
 		protected LocalScope Local => CurrentScope as LocalScope;
+		protected GlobalScope Global => CurrentScope as GlobalScope;
 		public bool IsAnonymous => CurrentScope.IsAnonymous;
 		public Dictionary<String, object> PersistentData => CurrentScope.PersistentData;
 
@@ -163,22 +166,22 @@ namespace OrganisedAssembly
 			usingStack.Pop();
 		}
 
-		public void UsingScope(params String[] path)
+		public void UsingScope(params Identifier[] path)
 		{
 			if(usingStack.Count == 0)
 				throw new InvalidOperationException("Attempted to import a scope while not in a file.");
-			GlobalScope scope = rootScope.GetSubScope(path) ?? throw new LanguageException($"Attmepted to use non-existent global scope {String.Join('.', path)}.");
+			GlobalScope scope = rootScope.GetSubScope(path) ?? throw new LanguageException($"Attmepted to use non-existent global scope {String.Join<Identifier>('.', path)}.");
 			UsingScopes.Add(scope);
 		}
 
-		public void EnterGlobal(params String[] path)
+		public void EnterGlobal(params Identifier[] path)
 		{
 			if(IsLocal)
 				throw new LanguageException("Cannot enter global scope while in a local scope.");
 
 			// when a scope path exists of more than one scope, all of the parent scopes should be created if necessary, but none of them should be pushed on the stack
 			GlobalScope scope = (GlobalScope)CurrentScope;
-			foreach(String segment in path)
+			foreach(Identifier segment in path)
 				scope = scope.GetSubScope(segment) ?? new GlobalScope(segment, scope);
 
 			// 'scope' now contains the last scope in the path, this is the one to actually enter
@@ -194,19 +197,19 @@ namespace OrganisedAssembly
 			scopeStack.Pop();
 		}
 
-		public String[] GetCurrentPath() => (from scope in scopeStack.Reverse() where scope.Name != null select scope.Name).ToArray();
+		public Identifier[] GetCurrentPath() => (from scope in scopeStack.Reverse() where scope.Name != null select scope.Name).ToArray();
 
-		public TypeSymbol GetCurrentAssociatedType() => !IsLocal ? (CurrentScope as GlobalScope).AssociatedType : throw new InvalidOperationException("Attempted to obtain associated type of a local scope.");
+		public TypeSymbol GetCurrentAssociatedType() => !IsLocal ? Global.AssociatedType : throw new InvalidOperationException("Attempted to obtain associated type of a local scope.");
 
-		public void EnterLocal(String name)
+		public void EnterLocal(Identifier name)
 		{
 			if(IsLocal)
-				throw new InvalidOperationException($"Attempted to enter local scope {name} while already in local scope {String.Join('.', GetCurrentPath())}.");
+				throw new InvalidOperationException($"Attempted to enter local scope {name} while already in local scope {String.Join<Identifier>('.', GetCurrentPath())}.");
 
-			LocalScope scope = (CurrentScope as GlobalScope).GetLocalScope(name);
+			LocalScope scope = Global.GetLocalScope(name);
 			if(scope == null)
 				if(currentPass == CompilationStep.DeclareGlobalSymbols)
-					(CurrentScope as GlobalScope).AddLocalScope(scope = new LocalScope(name));
+					Global.AddLocalScope(scope = new LocalScope(name));
 				else
 					throw new InvalidOperationException($"Attempted to enter non-existent local scope in pass {currentPass}.");
 
@@ -247,7 +250,7 @@ namespace OrganisedAssembly
 			currentColumn = column;
 		}
 
-		public void DeclareVariable(ValueType type, String name)
+		public void DeclareVariable(ValueType type, Identifier name)
 		{
 			if(!IsLocal)
 				throw new VariableException("Attempted to declare a local variable in a nonlocal scope.");
@@ -261,28 +264,34 @@ namespace OrganisedAssembly
 			Local.AllocateDummyVariable(size);
 		}
 
-		public void DeclareExistingStackVariable(ValueType type, String name, int offset)
+		public void DeclareExistingStackVariable(ValueType type, Identifier name, int offset)
 		{
 			if(!IsLocal)
 				throw new VariableException("Attempted to declare a local variable in a nonlocal scope.");
 			Local.DeclareVariable(type, name, offset);
 		}
 
-		public void DeclareConstant(String name, String nasmRepresentation, ValueType type = null)
+		public void DeclareConstant(Identifier name, String nasmRepresentation, ValueType type = null)
 			=> CurrentScope.DeclareSymbol(name, new ConstantSymbol(nasmRepresentation, type));
 
-		public void DeclareFunction(String name, String label, FunctionMetadata metadata)
-			=> CurrentScope.DeclareSymbol(name, new FunctionSymbol(label, metadata));
+		public void DeclareFunction(Identifier name, String label, FunctionMetadata metadata)
+		{
+			if(IsLocal)
+				throw new LanguageException("Attempted to declare function in local scope.");
+			Global.Declare(name, new FunctionSymbol(label, metadata), new LocalScope(name));
+		}
 
-		public PlaceholderSymbol DeclarePlaceholder(String name, Func<Symbol> resolve)
+		public PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<Symbol> resolve) => DeclarePlaceholder(name, resolve, null);
+		public PlaceholderSymbol DeclareFunctionPlaceholder(Identifier name, Func<FunctionSymbol> resolve) => DeclarePlaceholder(name, resolve, new LocalScope(name));
+		protected PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<Symbol> resolve, LocalScope functionScope)
 		{
 			if(IsLocal)
 				throw new InvalidOperationException("Attempted to declare a placeholder symbol in a local scope.");
 			if(currentPass != CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to declare a placeholder symbol during pass {currentPass}.");
-			PlaceholderSymbol placeholder = new PlaceholderSymbol(name, CurrentScope as GlobalScope, resolve);
+			PlaceholderSymbol placeholder = new PlaceholderSymbol(name.name, Global, resolve);
 			placeholders.AddNode(placeholder);
-			CurrentScope.DeclareSymbol(name, placeholder);
+			Global.Declare(name, placeholder, functionScope);
 			return placeholder;
 		}
 
@@ -300,25 +309,26 @@ namespace OrganisedAssembly
 			placeholders.AddEdge(dependency, dependent);
 		}
 
-		public void DeclareType(String name, TypeSymbol type)
+		public void DeclareType(Identifier name, TypeSymbol type)
 		{
 			if(currentPass != CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to declare a type during pass {currentPass}.");
 			if(IsLocal)
 				throw new LanguageException($"Attempted to declare a type in a local scope.");
-			
-			CurrentScope.DeclareSymbol(name, type);
-			type.InitMemberScope(new GlobalScope(name, (GlobalScope)CurrentScope, type));
+
+			GlobalScope scope = new GlobalScope(name, Global, type);
+			Global.Declare(name, type, scope);
+			type.InitMemberScope(scope);
 		}
 
-		public Operand SetRegisterAlias(String name, String register)
+		public Operand SetRegisterAlias(Identifier name, String register)
 		{
 			if(!IsLocal)
 				throw new LanguageException("Attempted to set register alias in a global scope.");
 			if(currentPass != CompilationStep.GenerateCode)
 				throw new InvalidOperationException($"Attempted to set register alias during pass {currentPass}.");
 
-			if(CurrentScope.GetSymbol(new String[] { name }) is AliasSymbol existing)
+			if(CurrentScope.GetSymbol(name) is AliasSymbol existing)
 			{
 				existing.Assign(register);
 				return existing.Register;
@@ -331,12 +341,13 @@ namespace OrganisedAssembly
 			}
 		}
 
-		public bool IsStackVariable(String name) => IsLocal && Local.SymbolExists(name);
+		public bool IsStackVariable(Identifier name) => IsLocal && Local.SymbolExists(name);
 
-		public Symbol ResolveSymbol(params String[] path)
+		public Symbol ResolveSymbol(UnresolvedPath path) => ResolveSymbol(path.Resolve(this));
+		public Symbol ResolveSymbol(params Identifier[] path)
 		{
 			if(currentPass != CompilationStep.GenerateCode && currentPass != CompilationStep.SolveGlobalSymbolDependencies)
-				throw new InvalidOperationException($"Attempted to resolve a name ({String.Join('.', path)}) during  pass {currentPass}.");
+				throw new InvalidOperationException($"Attempted to resolve a name ({String.Join<Identifier>('.', path)}) during  pass {currentPass}.");
 			foreach(Scope scope in scopeStack)
 			{
 				Symbol var = scope.GetSymbol(path);
@@ -350,7 +361,7 @@ namespace OrganisedAssembly
 					if(var != null)
 						return var;
 				}
-			throw new LanguageException($"Attempted to reference non-existent variable, constant or function '{String.Join('.', path)}'.");
+			throw new LanguageException($"Attempted to reference non-existent variable, constant or function '{String.Join<Identifier>('.', path)}'.");
 		}
 
 		public int GetStackSize()

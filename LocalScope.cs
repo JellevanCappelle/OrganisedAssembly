@@ -6,12 +6,12 @@ namespace OrganisedAssembly
 	class LocalScope : BaseScope, Scope
 	{
 		public Stack Stack { get; protected set; }
-		public String Name { get; protected set; } = null;
+		public Identifier Name { get; protected set; } = null;
 		public bool IsAnonymous => Name == null;
 		protected Dictionary<String, Symbol> symbols = new Dictionary<String, Symbol>();
 		public int VariableStackSize { get; protected set; } = 0;
 
-		public LocalScope(String name)
+		public LocalScope(Identifier name)
 		{
 			Name = name;
 			Stack = new Stack();
@@ -22,24 +22,28 @@ namespace OrganisedAssembly
 		/// <summary>
 		/// Declares a new variable on the stack.
 		/// </summary>
-		public virtual void DeclareVariable(ValueType type, String name)
+		public void DeclareVariable(ValueType type, Identifier name)
 		{
-			if(symbols.ContainsKey(name))
+			if(name.HasTemplateParams)
+				throw new VariableException($"Attempted to use template parameters in the name of local {name}.");
+			if(symbols.ContainsKey(name.name))
 				throw new VariableException($"Attempted to redefine variable or constant {name}.");
 			VariableStackSize += type.Size;
 			Stack.Pointer -= type.Size;
-			symbols[name] = new StackSymbol(Stack, Stack.Pointer, type);
+			symbols[name.name] = new StackSymbol(Stack, Stack.Pointer, type);
 		}
 
 		/// <summary>
 		/// Declares a variable that already exists on the stack.
 		/// </summary>
 		/// <param name="offset">Offset relative to the current stack pointer.</param>
-		public void DeclareVariable(ValueType type, String name, int offset)
+		public void DeclareVariable(ValueType type, Identifier name, int offset)
 		{
-			if(symbols.ContainsKey(name))
+			if(name.HasTemplateParams)
+				throw new VariableException($"Attempted to use template parameters in the name of local {name}.");
+			if(symbols.ContainsKey(name.name))
 				throw new VariableException($"Attempted to redefine variable or constant {name}.");
-			symbols[name] = new StackSymbol(Stack, Stack.Pointer + offset, type);
+			symbols[name.name] = new StackSymbol(Stack, Stack.Pointer + offset, type);
 		}
 
 		/// <summary>
@@ -53,29 +57,29 @@ namespace OrganisedAssembly
 			Stack.Pointer -= size;
 		}
 
-		public bool SymbolExists(params String[] path)
+		public bool SymbolExists(Identifier name)
 		{
-			if(path.Length != 1) // named local scopes cannot be nested
+			if(name.HasTemplateParams)
 				return false;
-			String name = path[0];
-			return symbols.ContainsKey(name);
+			return symbols.ContainsKey(name.name);
 		}
 
-		public Symbol GetSymbol(params String[] path)
+		public Symbol GetSymbol(params Identifier[] path)
 		{
 			if(path.Length != 1) // named local scopes cannot be nested
 				return null;
-			String name = path[0];
-			if(symbols.ContainsKey(name))
-				return symbols[name];
-			else return null;
+			if(path[0].HasTemplateParams)
+				return null;
+			return symbols.GetValueOrDefault(path[0].name);
 		}
 
-		public void DeclareSymbol(String name, Symbol symbol)
+		public void DeclareSymbol(Identifier name, Symbol symbol)
 		{
-			if(symbols.ContainsKey(name))
+			if(name.HasTemplateParams)
+				throw new VariableException($"Attempted to use template parameters in the name of local {name}.");
+			if(symbols.ContainsKey(name.name))
 				throw new VariableException($"Attempted to redefine variable or constant {name}.");
-			symbols[name] = symbol;
+			symbols[name.name] = symbol;
 		}
 
 		protected override Scope CreateAnonymousScope() => new LocalScope(Stack);

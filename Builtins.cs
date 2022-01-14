@@ -21,7 +21,7 @@
 					offset <<= 1;
 
 			// declare fields
-			compiler.DeclareConstant("length", "0", new ValueType(CompilerSettings.ArrayLengthSize));
+			compiler.DeclareConstant("count", "0", new ValueType(CompilerSettings.ArrayLengthSize));
 			compiler.DeclareConstant("data", offset.ToString());
 		}
 	}

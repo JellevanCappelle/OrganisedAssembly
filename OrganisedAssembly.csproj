@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <None Remove="Declarations.cs~RF15ba5565.TMP" />
+    <None Remove="Scope.cs~RFfeeef56.TMP" />
   </ItemGroup>
 
   <ItemGroup>

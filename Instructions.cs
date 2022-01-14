@@ -76,7 +76,7 @@ namespace OrganisedAssembly
 			{
 				if(operand.GetNonterminal("sizeSpecifier") is JsonProperty size)
 					return (ParseSize(size.Flatten()), SizePriority.Explicit);
-				else if(MemoryReferenceToPath(operand) is String[] path)
+				else if(MemoryReferenceToPath(operand, compiler) is Identifier[] path)
 					return (compiler.ResolveSymbol(path).Size, SizePriority.Implicit);
 				else
 					return (SizeSpecifier.NONE, SizePriority.Undefined);
@@ -85,7 +85,7 @@ namespace OrganisedAssembly
 				return (GenerateAlias(operand, compiler).size, SizePriority.Register);
 			else if(operand.Name == "immediate")
 			{
-				String[] path = ExpressionToPath(operand.GetNonterminal("expr") ?? throw new LanguageException($"Encountered malformed immediate: '{operand}'."));
+				Identifier[] path = ExpressionToPath(operand.GetNonterminal("expr") ?? throw new LanguageException($"Encountered malformed immediate: '{operand}'."), compiler);
 				if(path != null && compiler.ResolveSymbol(path) is AliasSymbol alias)
 				{
 					if(operand.GetNonterminal("sizeSpecifier") is JsonProperty size)

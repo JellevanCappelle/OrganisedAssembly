@@ -8,7 +8,7 @@ namespace OrganisedAssembly
 	{
 		protected SizeSpecifier sizeSpec = SizeSpecifier.NONE;
 		protected int size = 0;
-		protected String[] typeName = null;
+		protected UnresolvedPath typeName = null;
 		protected PlaceholderSymbol dependency = null;
 		protected TypeSymbol type;
 		protected bool defined = false;
@@ -32,11 +32,7 @@ namespace OrganisedAssembly
 				defined = true;
 			}
 			else if(sizeOrType.Name == "identifierPath")
-			{
-				typeName = sizeOrType.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray();
-				if(typeName == null)
-					throw new LanguageException($"Malformed typename: {sizeOrType.Flatten()}");
-			}
+				typeName = new UnresolvedPath(sizeOrType);
 			else
 				throw new LanguageException($"Unexpected sub-rule name in sizeOrType: {sizeOrType.Name}.");
 		}
@@ -66,7 +62,7 @@ namespace OrganisedAssembly
 					compiler.DeclareDependency(dependency, dependent);
 				}
 				else
-					throw new LanguageException($"Not a type: {String.Join('.', typeName)}.");
+					throw new LanguageException($"Not a type: {typeName}.");
 			}
 		}
 
@@ -78,7 +74,7 @@ namespace OrganisedAssembly
 				if(type is TypeSymbol)
 					Solve((TypeSymbol)type);
 				else
-					throw new LanguageException($"Not a type: {String.Join('.', typeName)}.");
+					throw new LanguageException($"Not a type: {typeName}.");
 			}
 		}
 
@@ -90,11 +86,11 @@ namespace OrganisedAssembly
 			if(typeName == null)
 				return;
 
-			Symbol type = compiler.ResolveSymbol(typeName);
+			Symbol type = compiler.ResolveSymbol(typeName.Resolve(compiler));
 			if(type is TypeSymbol)
 				Solve((TypeSymbol)type);
 			else
-				throw new LanguageException($"Not a type: {String.Join('.', typeName)}.");
+				throw new LanguageException($"Not a type: {typeName}.");
 		}
 
 		protected void Solve(TypeSymbol type)

@@ -67,7 +67,9 @@ def doubleQuotedString(): return regex(r'"([^"\\]|\\.)*"')
 def number(): return [hexadecimal, binary, decimal, singleQuotedString]
 
 # identifier
-def identifier(): return Not(nonIdentifiers), regex('[a-zA-Z_][a-zA-Z0-9_]*')
+def identifierName(): return Not(nonIdentifiers), regex('[a-zA-Z_][a-zA-Z0-9_]*')
+def templateParameters(): return '<', identifierPath, ZeroOrMore(',', identifierPath), '>'
+def identifier(): return identifierName, Optional(templateParameters)
 def identifierPath(): return identifier, ZeroOrMore('.', identifier)
 
 # expression # TODO: differentiate between expressions that can or can't contain registers (i.e. effective addresses or immediates)

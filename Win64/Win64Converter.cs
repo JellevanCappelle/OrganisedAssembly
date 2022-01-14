@@ -198,7 +198,7 @@ namespace OrganisedAssembly.Win64
 						compiler.DeclareFunction(name, label, new FunctionMetadata());
 					else
 					{
-						placeholder = compiler.DeclarePlaceholder(name, () =>
+						placeholder = compiler.DeclareFunctionPlaceholder(name, () =>
 						{
 							foreach((ValueType type, String name) in parameters)
 								type.ResolveDependency();
