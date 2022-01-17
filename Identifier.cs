@@ -19,7 +19,7 @@ namespace OrganisedAssembly
 
 		public static implicit operator Identifier(String name) => new Identifier(name);
 
-		public override String ToString() => name;
+		public override String ToString() => HasTemplateParams ? $"{name}<...>" : name;
 	}
 
 	class UnresolvedIdentifier
@@ -30,12 +30,19 @@ namespace OrganisedAssembly
 
 		public UnresolvedIdentifier(JsonProperty identifier)
 		{
-			name = identifier.GetNonterminal("identifierName")?.Flatten() ?? throw new LanguageException("Malformed identifier.");
+			name = identifier.GetNonterminal("name")?.Flatten()
+				   ?? throw new LanguageException("Malformed identifier.");
 			
 			if(identifier.GetNonterminal("templateParameters") is JsonProperty templateParams)
 				this.templateParams = (from path in templateParams.GetNonterminals("identifierPath") select new UnresolvedPath(path)).ToArray();
 			else
 				this.templateParams = new UnresolvedPath[0];
+		}
+
+		public UnresolvedIdentifier(String name)
+		{
+			this.name = name;
+			templateParams = new UnresolvedPath[0];
 		}
 
 		public Identifier Resolve(ICompiler compiler) => new Identifier(name, (from path in templateParams select compiler.ResolveSymbol(path)).ToArray());
@@ -57,8 +64,11 @@ namespace OrganisedAssembly
 		protected readonly UnresolvedIdentifier[] segments;
 		public bool IsNull => segments.Length == 0;
 
-		public UnresolvedPath(JsonProperty? identifierPath) => segments = identifierPath?.GetNonterminals("identifier").Select(x => new UnresolvedIdentifier(x)).ToArray()
-																		  ?? new UnresolvedIdentifier[0];
+		public UnresolvedPath(JsonProperty? path)
+			=> segments = path?.Name == "identifierPath" // otherwise assume namePath or null
+			? path?.GetNonterminals("identifier").Select(x => new UnresolvedIdentifier(x)).ToArray()
+			: path?.GetNonterminals("name").Select(x => new UnresolvedIdentifier(x.Flatten())).ToArray()
+			  ?? new UnresolvedIdentifier[0];
 
 		public Identifier[] Resolve(ICompiler compiler) => !IsNull
 			? (from x in segments select x.Resolve(compiler)).ToArray()

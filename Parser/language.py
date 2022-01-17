@@ -67,9 +67,12 @@ def doubleQuotedString(): return regex(r'"([^"\\]|\\.)*"')
 def number(): return [hexadecimal, binary, decimal, singleQuotedString]
 
 # identifier
-def identifierName(): return Not(nonIdentifiers), regex('[a-zA-Z_][a-zA-Z0-9_]*')
+def name(): return Not(nonIdentifiers), regex('[a-zA-Z_][a-zA-Z0-9_]*')
+def namePath(): return name, ZeroOrMore('.', name)
 def templateParameters(): return '<', identifierPath, ZeroOrMore(',', identifierPath), '>'
-def identifier(): return identifierName, Optional(templateParameters)
+def templateDeclarationParameters(): return '<', name, ZeroOrMore(',', name), '>' # TODO: allow syntax for specifying parameter types
+def templateName(): return name, Optional(templateDeclarationParameters)
+def identifier(): return name, Optional(templateParameters)
 def identifierPath(): return identifier, ZeroOrMore('.', identifier)
 
 # expression # TODO: differentiate between expressions that can or can't contain registers (i.e. effective addresses or immediates)
@@ -103,7 +106,7 @@ def opcode(): return instructionKeyword
 def repPrefix(): return ["rep", "repe", "repne", "repnz", "repz"]
 def lockPrefix(): return "lock"
 def instruction(): return Optional(lockPrefix), Optional(repPrefix), opcode, Optional(operandList)
-def label(): return identifier, ':'
+def label(): return name, ':'
 def comment(): return regex('#.*')
 def statement(): return Optional(label), Optional([instruction, sseInstruction, controlFlow, abiReturn, abiCall, methodCall, declaration]), Optional(comment)
 def emptyStatement(): return Optional(comment)
@@ -112,29 +115,29 @@ def emptyStatement(): return Optional(comment)
 def sizeOrType(): return [sizeSpecifier, identifierPath]
 def exprList(): return expr, ZeroOrMore(',', expr)
 def varAssignment(): return '=', expr
-def variableDecl(): return sizeOrType, '[', identifier, ']', Optional(varAssignment)
+def variableDecl(): return sizeOrType, '[', name, ']', Optional(varAssignment)
 def dataStringType(): return stringSizeKeywords
-def dataStringDecl(): return dataStringType, '[', identifier, ']', '=', exprList
-def textStringDecl(): return "string", '[', identifier, ']', '=', doubleQuotedString
-def cStringDecl(): return "cstring", '[', identifier, ']', '=', singleQuotedString
-def fileDecl(): return "binary", '[', identifier, ']', ':', doubleQuotedString
-def constantDecl(): return "constant", identifier, '=', expr
-def arrayDecl(): return "byte", '(', expr, ')', '[', identifier, ']'
-def aliasDecl(): return "alias", identifier, '=', gpRegister
+def dataStringDecl(): return dataStringType, '[', name, ']', '=', exprList
+def textStringDecl(): return "string", '[', name, ']', '=', doubleQuotedString
+def cStringDecl(): return "cstring", '[', name, ']', '=', singleQuotedString
+def fileDecl(): return "binary", '[', name, ']', ':', doubleQuotedString
+def constantDecl(): return "constant", name, '=', expr
+def arrayDecl(): return "byte", '(', expr, ')', '[', name, ']'
+def aliasDecl(): return "alias", name, '=', gpRegister
 def declaration(): return [variableDecl, dataStringDecl, textStringDecl, cStringDecl, constantDecl, arrayDecl, aliasDecl, fileDecl]
 
 # enums
-def enumAssignment(): return identifier, '=', expr
+def enumAssignment(): return name, '=', expr
 def enumStatement(): return Optional(enumAssignment), Optional(comment)
 def enumBody(): return '{', enumStatement, ZeroOrMore('\n', enumStatement), '}'
-def enum(): return "enum", identifier, Optional(emptySpace), enumBody, Optional(comment)
+def enum(): return "enum", name, Optional(emptySpace), enumBody, Optional(comment)
 
 # ABI calls
 def memArgument(): return Optional(sizeOrType), '[', segAddress, ']'
 def immArgument(): return Optional(sizeSpecifier), expr
 def refArgument(): return "ref", [('[', segAddress, ']'), singleQuotedString, doubleQuotedString]
 def argument(): return [gpRegister, memArgument, refArgument, immArgument]
-def returnTarget(): return [gpRegister, memArgument, aliasDecl, identifier] # only aliased registers should be allowed for 'identifier'
+def returnTarget(): return [gpRegister, memArgument, aliasDecl, name] # only aliased registers should be allowed for 'name'
 def returnTargetList(): return returnTarget, ZeroOrMore(',', returnTarget)
 def argumentList(): return argument, ZeroOrMore(',', argument)
 def abiAssignment(): return returnTargetList, '='
@@ -142,23 +145,23 @@ def abiCall(): return Optional(abiAssignment), identifierPath, '(', Optional(arg
 def abiReturn(): return "return", Optional(argumentList)
 
 # functions
-def parameter(): return sizeOrType, '[', identifier, ']'
+def parameter(): return sizeOrType, '[', name, ']'
 def parameterList(): return parameter, ZeroOrMore(',', parameter)
-def functionDeclaration(): return "function", identifier, '(', Optional(parameterList), ')'
+def functionDeclaration(): return "function", templateName, '(', Optional(parameterList), ')'
 def emptySpace(): return OneOrMore(emptyStatement, '\n')
 def localCode(): return statement, ZeroOrMore('\n', statement)
 def localBody(): return '{', localCode, '}'
 def function(): return functionDeclaration, Optional(emptySpace), localBody, Optional(comment)
 
 # structs
-def structVariableDecl(): return sizeOrType, '[', identifier, ']'
+def structVariableDecl(): return sizeOrType, '[', name, ']'
 def structField(): return [structVariableDecl, constantDecl, arrayDecl]
 def staticKeyword(): return "static"
-def structMethodDecl(): return Optional(staticKeyword), "method", identifier, '(', Optional(parameterList), ')'
+def structMethodDecl(): return Optional(staticKeyword), "method", templateName, '(', Optional(parameterList), ')'
 def structMethod(): return structMethodDecl, Optional(emptySpace), localBody, Optional(comment)
 def structStatement(): return Optional([structField, structMethod]), Optional(comment)
 def structBody(): return '{', structStatement, ZeroOrMore('\n', structStatement), '}'
-def struct(): return "struct", identifier, Optional(emptySpace), structBody, Optional(comment)
+def struct(): return "struct", templateName, Optional(emptySpace), structBody, Optional(comment)
 def regPointerCast(): return '(', gpRegister, "as", identifierPath, ')'
 def memPointerCast(): return '[', segAddress, "as", identifierPath, ']'
 def directPointer(): return '[', identifierPath, ']'
@@ -188,12 +191,12 @@ def controlFlow(): return [breakStatement, continueStatement, ifStatement, while
 # namespaces
 def globalStatement(): return [namespace, enum, struct, function, statement, '']
 def globalCode(): return globalStatement, ZeroOrMore('\n', globalStatement)
-def namespaceDeclaration(): return 'namespace', identifierPath
+def namespaceDeclaration(): return 'namespace', namePath
 def namespaceBody(): return '{', globalCode, '}'
 def namespace(): return namespaceDeclaration, Optional(emptySpace), namespaceBody, Optional(comment)
 
 # file structure
-def using(): return "using", identifierPath, Optional(comment), '\n'
+def using(): return "using", namePath, Optional(comment), '\n'
 def usingList(): return using, ZeroOrMore(Optional(emptySpace), using)
 def program(): return Optional(emptySpace), Optional(usingList), globalCode, EOF
 

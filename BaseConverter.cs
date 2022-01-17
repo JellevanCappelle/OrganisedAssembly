@@ -37,30 +37,6 @@ namespace OrganisedAssembly
 			return program;
 		}
 
-		protected bool NodeDependsOnStack(JsonProperty node, ICompiler compiler)
-		{
-			if(!compiler.IsLocal) // can't be stack dependent in a global scope
-				return false;
-			foreach(JsonProperty reference in node.GetNonterminalsRecursive("identifierPath"))
-			{
-				String[] path = reference.GetNonterminals("identifier").Select(x => x.Flatten()).ToArray();
-				if(path.Length == 1) // stack variables can only consist of a single path segment
-					if(compiler.IsStackVariable(path[0]))
-						return true;
-			}
-			return false;
-		}
-
-		protected bool NodesDependOnStack(JsonProperty[] nodes, ICompiler compiler)
-		{
-			if(!compiler.IsLocal)
-				return false;
-			foreach(JsonProperty node in nodes)
-				if(NodeDependsOnStack(node, compiler))
-					return true;
-			return false;
-		}
-
 		/// <summary>
 		/// Resolves the node to its NASM representation. Does not set aliases if alias declarations are encountered.
 		/// </summary>
@@ -69,7 +45,7 @@ namespace OrganisedAssembly
 			("singleQuoteString", str => StringToNasm(str.Flatten())),
 			("sizeof", sizeOf => SizeOf(sizeOf, compiler).ToString()),
 			("identifierPath", id => compiler.ResolveSymbol(new UnresolvedPath(id))),
-			("aliasDecl", alias => compiler.ResolveSymbol(alias.GetNonterminal("identifier")?.Flatten() ?? throw new LanguageException($"Encountered malformed alias declaration: '{alias.Flatten()}'.")))
+			("aliasDecl", alias => compiler.ResolveSymbol(alias.GetNonterminal("name")?.Flatten() ?? throw new LanguageException($"Encountered malformed alias declaration: '{alias.Flatten()}'.")))
 		});
 
 		protected String GetLabelString(ICompiler compiler, String name)
@@ -295,7 +271,7 @@ namespace OrganisedAssembly
 					throw new InvalidOperationException("Attempted to set alias without enabling code generation.");
 				return GenerateAlias(arg, compiler);
 			}
-			else if(arg.Name == "identifier") // only used to support aliased registers
+			else if(arg.Name == "name") // only used to support aliased registers
 			{
 				if(compiler.ResolveSymbol(arg.Flatten()) is AliasSymbol alias)
 					return alias.Register;
@@ -369,14 +345,17 @@ namespace OrganisedAssembly
 			// obtain function name and parameter list
 			JsonProperty declaration = function.GetNonterminal("functionDeclaration")
 									   ?? throw new LanguageException("Malformed function.");
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
-						  ?? throw new LanguageException("Malformed function declaration.");
+			TemplateName name = new TemplateName(declaration.GetNonterminal("templateName")
+								?? throw new LanguageException("Malformed function declaration."));
 			JsonProperty body = function.GetNonterminal("localBody")
 								?? throw new LanguageException("Missing function body.");
 			(ValueType size, String name)[] parameters = ParseParameterList(declaration.GetNonterminal("parameterList"))?.ToArray();
 
+			if(name.HasTemplateParams)
+				throw new NotImplementedException(); // TODO
+
 			// generate function
-			GenerateFunction(name, parameters, body, program);
+			GenerateFunction(name.Name, parameters, body, program);
 		}
 
 		protected void ConvertABICall(JsonProperty call, LinkedList<CompilerAction> program)
@@ -479,14 +458,14 @@ namespace OrganisedAssembly
 			{
 				ValueType size = new ValueType(par.GetNonterminal("sizeOrType")
 								 ?? throw new LanguageException($"Malformed parameter: {par.Flatten()}."));
-				String name = par.GetNonterminal("identifier")?.Flatten()
+				String name = par.GetNonterminal("name")?.Flatten()
 							  ?? throw new LanguageException($"Malformed parameter: {par.Flatten()}.");
 				return (size, name);
 			});
 
 		void ConverNamespace(JsonProperty node, LinkedList<CompilerAction> program)
 		{
-			Identifier[] path = new UnresolvedPath(node.GetNonterminal("namespaceDeclaration")?.GetNonterminal("identifierPath")
+			Identifier[] path = new UnresolvedPath(node.GetNonterminal("namespaceDeclaration")?.GetNonterminal("namePath")
 												   ?? throw new LanguageException("Encountered malformed namespace.")
 								).ResolveParameterless()
 								?? throw new LanguageException("Encountered namespace with template parameters in its name.");
@@ -500,7 +479,7 @@ namespace OrganisedAssembly
 
 		void ConvertUsing(JsonProperty node, LinkedList<CompilerAction> program)
 		{
-			Identifier[] path = new UnresolvedPath(node.GetNonterminal("identifierPath")
+			Identifier[] path = new UnresolvedPath(node.GetNonterminal("namePath")
 												   ?? throw new LanguageException($"Malformed using statement: '{node.Flatten()}'."))
 								.ResolveParameterless()
 								?? throw new LanguageException($"Attempted to use template parameters in using statement: '{node.Flatten()}'.");
@@ -514,8 +493,8 @@ namespace OrganisedAssembly
 
 		void ConvertEnum(JsonProperty node, LinkedList<CompilerAction> program)
 		{
-			String enumName = node.GetNonterminal("identifier")?.Flatten()
-						  ?? throw new LanguageException("Malformed enum declaration.");
+			String enumName = node.GetNonterminal("name")?.Flatten()
+							  ?? throw new LanguageException("Malformed enum declaration.");
 			JsonProperty[] statements = node.GetNonterminal("enumBody")?.GetNonterminals("enumStatement").ToArray()
 										?? throw new LanguageException("Enum declaration missing body.");
 
@@ -525,7 +504,7 @@ namespace OrganisedAssembly
 				JsonProperty? assignment = statement.GetNonterminal("enumAssignment");
 				if(assignment == null) continue;
 
-				String name = assignment?.GetNonterminal("identifier")?.Flatten()
+				String name = assignment?.GetNonterminal("name")?.Flatten()
 							  ?? throw new LanguageException("Malformed enum assignment.");
 				JsonProperty value = assignment?.GetNonterminal("expr")
 									 ?? throw new LanguageException("Enum assignment missing value.");
@@ -541,10 +520,13 @@ namespace OrganisedAssembly
 
 		void ConvertStruct(JsonProperty node, LinkedList<CompilerAction> program)
 		{
-			String structName = node.GetNonterminal("identifier")?.Flatten()
-								?? throw new LanguageException("Malformed struct declaration.");
+			TemplateName structName = new TemplateName(node.GetNonterminal("templateName")
+									  ?? throw new LanguageException("Malformed struct declaration."));
 			JsonProperty[] statements = node.GetNonterminal("structBody")?.GetNonterminals("structStatement").ToArray()
 										?? throw new LanguageException("Struct declaration missing body.");
+
+			if(structName.HasTemplateParams)
+				throw new NotImplementedException(); // TODO
 
 			//define a TypeSymbol for the struct
 			int structSize = 0; // to be filled in later
@@ -555,13 +537,13 @@ namespace OrganisedAssembly
 				{
 					TypeSymbol structType = new TypeSymbol((int)SizeSpecifier.QWORD, true, () => structSize);
 					structSizePlaceholder = structType.sizeOfInstancePlaceholder;
-					compiler.DeclareType(structName, structType);
+					compiler.DeclareType(structName.Name, structType);
 					compiler.AddAnonymousPlaceholder(structSizePlaceholder);
 				}
 			});
 
 			// enter the structs namesapce
-			program.AddLast((compiler, pass) => compiler.EnterGlobal(structName));
+			program.AddLast((compiler, pass) => compiler.EnterGlobal(structName.Name));
 
 			// define (placeholders for) all fields and define all constants
 			List<(ValueType type, String name)> fields = new List<(ValueType type, String name)>();
@@ -583,17 +565,17 @@ namespace OrganisedAssembly
 					ValueType type;
 					if(fieldRule == "structVariableDecl")
 					{
-						name = field?.GetNonterminal("identifier")?.Flatten()
-									  ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}");
+						name = field?.GetNonterminal("name")?.Flatten()
+							   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}");
 						type = new ValueType(field?.GetNonterminal("sizeOrType")
-										 ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}"));
+							   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}"));
 					}
 					else if(fieldRule == "arrayDecl")
 					{
-						name = field?.GetNonterminal("identifier")?.Flatten()
-									  ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}");
+						name = field?.GetNonterminal("name")?.Flatten()
+							   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}");
 						type = new ValueType(int.Parse(field?.GetNonterminal("expr")?.Flatten() // TODO: write a proper expression-to-int method that works for compile-time constants
-								   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}")));
+							   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}")));
 					}
 					else
 						throw new LanguageException($"Unknown struct field rule: {fieldRule} in field {field?.Flatten()}.");
@@ -659,10 +641,13 @@ namespace OrganisedAssembly
 			JsonProperty declaration = method.GetNonterminal("structMethodDecl")
 									   ?? throw new LanguageException("Malformed struct method.");
 			bool staticMethod = declaration.GetNonterminal("staticKeyword") != null;
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
-						  ?? throw new LanguageException("Malformed function declaration.");
+			TemplateName name = new TemplateName(declaration.GetNonterminal("templateName")
+								?? throw new LanguageException("Malformed function declaration."));
 			JsonProperty body = method.GetNonterminal("localBody")
 								?? throw new LanguageException("Missing function body.");
+
+			if(name.HasTemplateParams)
+				throw new NotImplementedException(); // TODO
 
 			// construct the full parameter list (including the implicit 'this' parameter if the method is non-static)
 			IEnumerable<(ValueType type, String name)> explicitParameters = ParseParameterList(declaration.GetNonterminal("parameterList")) ?? new (ValueType type, String name)[0];
@@ -677,7 +662,7 @@ namespace OrganisedAssembly
 				});
 
 			// generate function
-			GenerateFunction(name, parameters, body, program);
+			GenerateFunction(name.Name, parameters, body, program);
 		}
 
 		void ConvertStatement(JsonProperty node, LinkedList<CompilerAction> program)
@@ -718,7 +703,7 @@ namespace OrganisedAssembly
 
 		void ConvertLabel(JsonProperty node, LinkedList<CompilerAction> program)
 		{
-			String label = node.GetNonterminal("identifier")?.Flatten()
+			String label = node.GetNonterminal("name")?.Flatten()
 						   ?? throw new LanguageException("Encountered malformed label statement.");
 			program.AddLast((compiler, pass) =>
 			{

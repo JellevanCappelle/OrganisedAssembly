@@ -58,7 +58,9 @@ namespace OrganisedAssembly
 		}
 
 		protected SymbolAndOrScope this[Identifier identifier]
-			=> members.GetValueOrDefault(identifier.name) ?? templateMembers.GetValueOrDefault(identifier.name)?[identifier.templateParams];
+			=> identifier.HasTemplateParams
+				? templateMembers.GetValueOrDefault(identifier.name)?[identifier.templateParams]
+				: members.GetValueOrDefault(identifier.name);
 
 		protected void AddSubScope(GlobalScope scope)
 		{

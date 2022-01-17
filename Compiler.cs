@@ -168,6 +168,8 @@ namespace OrganisedAssembly
 
 		public void UsingScope(params Identifier[] path)
 		{
+			if(currentPass == CompilationStep.DeclareGlobalSymbols)
+				throw new InvalidOperationException($"Attempted to import a scope during pass {CurrentPass}.");
 			if(usingStack.Count == 0)
 				throw new InvalidOperationException("Attempted to import a scope while not in a file.");
 			GlobalScope scope = rootScope.GetSubScope(path) ?? throw new LanguageException($"Attmepted to use non-existent global scope {String.Join<Identifier>('.', path)}.");
@@ -346,7 +348,7 @@ namespace OrganisedAssembly
 		public Symbol ResolveSymbol(UnresolvedPath path) => ResolveSymbol(path.Resolve(this));
 		public Symbol ResolveSymbol(params Identifier[] path)
 		{
-			if(currentPass != CompilationStep.GenerateCode && currentPass != CompilationStep.SolveGlobalSymbolDependencies)
+			if(currentPass == CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to resolve a name ({String.Join<Identifier>('.', path)}) during  pass {currentPass}.");
 			foreach(Scope scope in scopeStack)
 			{

@@ -44,10 +44,10 @@ namespace OrganisedAssembly
 
 		void ConvertVariable(JsonProperty declaration, LinkedList<CompilerAction> program)
 		{
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
+			String name = declaration.GetNonterminal("name")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration {declaration.Flatten()}.");
 			ValueType type = new ValueType(declaration.GetNonterminal("sizeOrType")
-								 ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}."));
+							 ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}."));
 			JsonProperty? value = declaration.GetNonterminal("varAssignment")?.GetNonterminal("expr");
 
 			PlaceholderSymbol placeholder = null;
@@ -104,7 +104,7 @@ namespace OrganisedAssembly
 
 		void ConvertDataString(JsonProperty declaration, LinkedList<CompilerAction> program)
 		{
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
+			String name = declaration.GetNonterminal("name")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}.");
 			String type = declaration.GetNonterminal("dataStringType")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}.");
@@ -141,7 +141,7 @@ namespace OrganisedAssembly
 
 		void ConvertTextString(JsonProperty declaration, LinkedList<CompilerAction> program)
 		{
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
+			String name = declaration.GetNonterminal("name")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}.");
 			JsonProperty value = declaration.GetNonterminal("doubleQuotedString")
 								 ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}.");
@@ -160,7 +160,7 @@ namespace OrganisedAssembly
 
 		void ConvertCString(JsonProperty declaration, LinkedList<CompilerAction> program)
 		{
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
+			String name = declaration.GetNonterminal("name")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}.");
 			JsonProperty value = declaration.GetNonterminal("singleQuotedString")
 								 ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}.");
@@ -179,7 +179,7 @@ namespace OrganisedAssembly
 
 		void ConvertConstant(JsonProperty declaration, LinkedList<CompilerAction> program)
 		{
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
+			String name = declaration.GetNonterminal("name")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration {declaration.Flatten()}.");
 			JsonProperty value = declaration.GetNonterminal("expr")
 								 ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}.");
@@ -198,7 +198,7 @@ namespace OrganisedAssembly
 
 		void ConvertArray(JsonProperty declaration, LinkedList<CompilerAction> program)
 		{
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
+			String name = declaration.GetNonterminal("name")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration {declaration.Flatten()}.");
 			JsonProperty size = declaration.GetNonterminal("expr")
 								?? throw new LanguageException($"Encountered malformed declaration {declaration.Flatten()}.");
@@ -207,12 +207,10 @@ namespace OrganisedAssembly
 			{
 				if(compiler.IsLocal)
 				{
-					int arraySize = int.Parse(size.Flatten()); // TODO: write a proper expression-to-int method that works for compile-time constants
 					if(pass == CompilationStep.GenerateCode)
 					{
-						compiler.DeclareVariable(new ValueType(arraySize), name); // TODO: test
-						/*compiler.AllocateDummyVariable(arraySize);
-						compiler.DeclareExistingStackVariable(SizeSpecifier.NONE, name, 0);*/
+						int arraySize = int.Parse(size.Flatten()); // TODO: write a proper expression-to-int method that works for compile-time constants
+						compiler.DeclareVariable(new ValueType(arraySize), name);
 					}
 				}
 				else
@@ -234,7 +232,7 @@ namespace OrganisedAssembly
 
 		Operand GenerateAlias(JsonProperty declaration, ICompiler compiler)
 		{
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
+			String name = declaration.GetNonterminal("name")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration {declaration.Flatten()}.");
 			String register = declaration.GetNonterminal("gpRegister")?.Flatten()
 							  ?? throw new LanguageException($"Encountered malformed declaration {declaration.Flatten()}.");
@@ -244,7 +242,7 @@ namespace OrganisedAssembly
 
 		void ConvertInclude(JsonProperty declaration, LinkedList<CompilerAction> program)
 		{
-			String name = declaration.GetNonterminal("identifier")?.Flatten()
+			String name = declaration.GetNonterminal("name")?.Flatten()
 						  ?? throw new LanguageException($"Encountered malformed declaration {declaration.Flatten()}.");
 			String filePath = declaration.GetNonterminal("doubleQuotedString")?.Flatten()
 							  ?? throw new LanguageException($"Encountered malformed declaration {declaration.Flatten()}.");

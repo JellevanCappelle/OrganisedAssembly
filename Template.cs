@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text.Json;
 
 namespace OrganisedAssembly
 {
@@ -41,6 +42,24 @@ namespace OrganisedAssembly
 			int hash = 0;
 			foreach(T e in array) hash ^= e.GetHashCode();
 			return hash;
+		}
+	}
+
+	class TemplateName
+	{
+		public bool HasTemplateParams => parameterNames.Length != 0;
+		public String Name => name;
+
+		protected readonly String name;
+		protected readonly String[] parameterNames;
+
+		public TemplateName(JsonProperty name)
+		{
+			this.name = name.GetNonterminal("name")?.Flatten()
+						?? throw new LanguageException($"Malformed template name '{name.Flatten()}'.");
+			parameterNames = name.GetNonterminal("templateDeclarationParameters") is JsonProperty parameters
+				? (from param in parameters.GetNonterminals("name") select param.Flatten()).ToArray()
+				: new String[0];
 		}
 	}
 }
