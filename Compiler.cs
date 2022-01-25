@@ -6,65 +6,50 @@ using System.Runtime.ExceptionServices;
 
 namespace OrganisedAssembly
 {
-	class Compiler : ICompiler
+	partial class Compiler : ICompiler
 	{
-		protected IEnumerable<CompilerAction> program;
-		protected Dictionary<String, Section> sections;
-
-		protected Stack<Scope> scopeStack = new Stack<Scope>();
-		protected Stack<List<Scope>> usingStack = new Stack<List<Scope>>();
-		protected Stack<String> fileStack = new Stack<String>();
 		public String CurrentFile => fileStack.Peek();
-		protected GlobalScope rootScope;
-		protected long uid = 0;
-		protected CompilationStep currentPass = CompilationStep.None;
 		public CompilationStep CurrentPass => currentPass;
-		protected int currentLine = 0;
-		protected int currentColumn = 0;
-
-		protected List<Scope> UsingScopes => usingStack.Peek();
-		protected Scope CurrentScope => scopeStack.Peek();
 		public bool IsLocal => CurrentScope is LocalScope;
-		protected LocalScope Local => CurrentScope as LocalScope;
-		protected GlobalScope Global => CurrentScope as GlobalScope;
 		public bool IsAnonymous => CurrentScope.IsAnonymous;
 		public Dictionary<String, object> PersistentData => CurrentScope.PersistentData;
 
-		protected TopologicalSort<PlaceholderSymbol> placeholders = new TopologicalSort<PlaceholderSymbol>();
+		protected List<Scope> UsingScopes => usingStack.Peek();
+		protected Scope CurrentScope => scopeStack.Peek();
+		protected LocalScope Local => CurrentScope as LocalScope;
+		protected GlobalScope Global => CurrentScope as GlobalScope;
 
-		public Compiler(IEnumerable<CompilerAction> program, Dictionary<String, StreamWriter> sections)
+		public Compiler(Dictionary<String, StreamWriter> sections, bool verbose = true)
 		{
-			this.program = program;
+			this.verbose = verbose;
 			this.sections = new Dictionary<String, Section>();
 			foreach(KeyValuePair<String, StreamWriter> section in sections)
 				this.sections[section.Key] = new Section(section.Value);
 			scopeStack.Push(rootScope = new GlobalScope());
 		}
 
-		public void Compile()
+		public void Compile(IEnumerable<CompilerAction> program, CompilationStep upTo = CompilationStep.GenerateCode)
 		{
 			if(program == null)
 				throw new LanguageException("Attempted to compile a non-existent program.");
 			try
 			{
-				CompilationStep[] passes = {
-					CompilationStep.DeclareGlobalSymbols,
-					CompilationStep.SolveGlobalSymbolDependencies,
-					CompilationStep.GenerateCode
-				};
-				foreach(CompilationStep pass in passes)
+				if(currentPass == CompilationStep.None) // skip the 'None' step
+					currentPass++;
+				for(; currentPass <= upTo; currentPass++)
 				{
-					currentPass = pass;
-					Console.Write($"Running compilation step: {currentPass}... ");
+					if(verbose) Console.Write($"Running compilation step: {currentPass}... ");
+					
+					// run through each compiler action in the program
 					foreach(CompilerAction action in program)
-						action(this, pass);
+						action(this, currentPass);
 
 					// resolve placeholders during the appropriate pass
-					if(pass == CompilationStep.SolveGlobalSymbolDependencies)
+					if(currentPass == CompilationStep.SolveGlobalSymbolDependencies)
 						foreach(PlaceholderSymbol placeholder in placeholders.Sort())
 							placeholder.Resolve();
 
-					Console.WriteLine("Done!");
+					if(verbose) Console.WriteLine("Done!");
 				}
 			}
 			catch(LanguageException e)
@@ -74,7 +59,6 @@ namespace OrganisedAssembly
 			}
 			foreach(Section section in sections.Values)
 				section.Close();
-			program = null;
 
 			// do post-compilation sanity checks, ensure everything that had to be exited was exited
 			if(usingStack.Count > 0)

@@ -131,8 +131,8 @@ namespace OrganisedAssembly.Win64
 			ParseAndConvertSource(program);
 
 			// compile
-			Compiler compiler = new Compiler(program, sections);
-			compiler.Compile();
+			Compiler compiler = new Compiler(sections);
+			compiler.Compile(program);
 
 			// include all sections in single .asm file
 			StreamWriter output = new StreamWriter($"{tempFolder}/output.asm");

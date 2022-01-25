@@ -13,18 +13,24 @@ namespace OrganisedAssembly
 
 	delegate void CompilerAction(ICompiler compiler, CompilationStep pass);
 
+	interface ICompilerState // must only capture scope/file/symbol information, but not e.g. the current pass or current line
+	{
+		ICompiler Instantiate();
+	}
+
 	interface ICompiler // TODO: comment
 	{
 		/// <summary>
 		/// Scope specific metadata.
 		/// </summary>
-		public Dictionary<String, object> PersistentData { get; }
+		Dictionary<String, object> PersistentData { get; }
 
-		public CompilationStep CurrentPass { get; }
+		CompilationStep CurrentPass { get; }
 		
-		public String CurrentFile { get; }
+		String CurrentFile { get; }
 
-		void Compile();
+		ICompilerState GetState(); // must return a deep copy of the current compiler state
+		void Compile(IEnumerable<CompilerAction> program, CompilationStep upTo = CompilationStep.GenerateCode);
 
 		void EnterFile(String file);
 		void ExitFile();

@@ -71,8 +71,8 @@ namespace OrganisedAssembly.Kernel
 			ParseAndConvertSource(program);
 
 			// compile the program
-			Compiler compiler = new Compiler(program, sections);
-			compiler.Compile();
+			Compiler compiler = new Compiler(sections);
+			compiler.Compile(program);
 
 			// include all sections in single .asm file
 			StreamWriter output = new StreamWriter($"{tempFolder}/output.asm");
