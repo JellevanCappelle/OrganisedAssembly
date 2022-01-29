@@ -15,7 +15,7 @@ namespace OrganisedAssembly
 
 	interface ICompilerState // must only capture scope/file/symbol information, but not e.g. the current pass or current line
 	{
-		ICompiler Instantiate();
+		(ICompiler, GlobalScope) Instantiate();
 	}
 
 	interface ICompiler // TODO: comment
@@ -62,11 +62,12 @@ namespace OrganisedAssembly
 		void AddAnonymousPlaceholder(PlaceholderSymbol placeholder);
 		void DeclareDependency(PlaceholderSymbol dependency, PlaceholderSymbol dependent);
 		void DeclareType(Identifier name, TypeSymbol type);
+		void DeclareTemplate(Identifier name, Template template);
 		Operand SetRegisterAlias(Identifier name, String register);
 		bool IsStackVariable(Identifier name);
 		Symbol ResolveSymbol(UnresolvedPath path);
 		Symbol ResolveSymbol(params Identifier[] path);
-
+		
 		int GetStackSize();
 		void SetStackSize(int size);
 		int GetMaxStackSize();

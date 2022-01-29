@@ -33,15 +33,17 @@ namespace OrganisedAssembly.Win64
 			// initialise .text, .data and .bss sections
 			Dictionary<String, StreamWriter> sections = new Dictionary<String, StreamWriter>()
 			{
+				{ "entry", new StreamWriter($"{tempFolder}/entry.asm") },
 				{ "program", new StreamWriter($"{tempFolder}/code.asm") },
 				{ "data", new StreamWriter($"{tempFolder}/data.asm") },
 				{ "uninitialised", new StreamWriter($"{tempFolder}/bss.asm") }
 			};
 
 			// copy template
-			sections["program"].Write(new StreamReader(templatePath).ReadToEnd());
+			sections["entry"].Write(new StreamReader(templatePath).ReadToEnd());
 
 			// declare sections
+			sections["entry"].WriteLine("section .text");
 			sections["program"].WriteLine("section .text");
 			sections["data"].WriteLine("section .data");
 			sections["uninitialised"].WriteLine("section .bss");
@@ -62,7 +64,7 @@ namespace OrganisedAssembly.Win64
 							$"call {entry}" + Environment.NewLine +
 							"xor ecx, ecx" + Environment.NewLine +
 							"jmp ExitProcess"
-							, "program");
+							, "entry");
 					}
 				},
 
@@ -136,6 +138,7 @@ namespace OrganisedAssembly.Win64
 
 			// include all sections in single .asm file
 			StreamWriter output = new StreamWriter($"{tempFolder}/output.asm");
+			output.WriteLine($"%include \"{tempFolder}/entry.asm\"");
 			output.WriteLine($"%include \"{tempFolder}/code.asm\"");
 			output.WriteLine($"%include \"{tempFolder}/data.asm\"");
 			output.WriteLine($"%include \"{tempFolder}/bss.asm\"");

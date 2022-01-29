@@ -6,21 +6,29 @@ using System.Runtime.ExceptionServices;
 
 namespace OrganisedAssembly
 {
+	class SharedReference<T> where T : class
+	{
+		public T Value { get; set; } = default(T);
+		
+		public static implicit operator T (SharedReference<T> reference) => reference.Value;
+	}
+
 	partial class Compiler : ICompiler
 	{
-		public String CurrentFile => fileStack.Peek();
+		public String CurrentFile => fileStack.Peek().file;
 		public CompilationStep CurrentPass => currentPass;
 		public bool IsLocal => CurrentScope is LocalScope;
 		public bool IsAnonymous => CurrentScope.IsAnonymous;
 		public Dictionary<String, object> PersistentData => CurrentScope.PersistentData;
 
-		protected List<Scope> UsingScopes => usingStack.Peek();
+		protected List<Scope> UsingScopes => fileStack.Peek().usings;
 		protected Scope CurrentScope => scopeStack.Peek();
 		protected LocalScope Local => CurrentScope as LocalScope;
 		protected GlobalScope Global => CurrentScope as GlobalScope;
 
 		public Compiler(Dictionary<String, StreamWriter> sections, bool verbose = true)
 		{
+			mainCompiler = true; // this compiler is not a instantiation of another compilers state
 			this.verbose = verbose;
 			this.sections = new Dictionary<String, Section>();
 			foreach(KeyValuePair<String, StreamWriter> section in sections)
@@ -30,8 +38,12 @@ namespace OrganisedAssembly
 
 		public void Compile(IEnumerable<CompilerAction> program, CompilationStep upTo = CompilationStep.GenerateCode)
 		{
+			int fileCount = fileStack.Count;
+			int scopeCount = scopeStack.Count;
+
 			if(program == null)
 				throw new LanguageException("Attempted to compile a non-existent program.");
+			
 			try
 			{
 				if(currentPass == CompilationStep.None) // skip the 'None' step
@@ -39,15 +51,28 @@ namespace OrganisedAssembly
 				for(; currentPass <= upTo; currentPass++)
 				{
 					if(verbose) Console.Write($"Running compilation step: {currentPass}... ");
-					
+
+					// create a new TopologicalSort if necessary
+					if(currentPass == CompilationStep.DeclareGlobalSymbols)
+						if(placeholdersOwner = placeholders.Value == null)
+							placeholders.Value = new TopologicalSort<PlaceholderSymbol>();
+
 					// run through each compiler action in the program
 					foreach(CompilerAction action in program)
 						action(this, currentPass);
 
-					// resolve placeholders during the appropriate pass
-					if(currentPass == CompilationStep.SolveGlobalSymbolDependencies)
-						foreach(PlaceholderSymbol placeholder in placeholders.Sort())
+					// resolve placeholders during the right pass, only if this is the owner of the TopologicalSort object
+					if(placeholdersOwner && currentPass == CompilationStep.SolveGlobalSymbolDependencies)
+					{
+						foreach(PlaceholderSymbol placeholder in placeholders.Value.Sort())
 							placeholder.Resolve();
+						placeholders.Value = null;
+					}
+
+					// close files
+					if(currentPass == CompilationStep.GenerateCode)
+						foreach(Section section in sections.Values)
+							section.Close();
 
 					if(verbose) Console.WriteLine("Done!");
 				}
@@ -57,35 +82,38 @@ namespace OrganisedAssembly
 				e.AddLineInfo(CurrentFile, currentLine, currentColumn);
 				ExceptionDispatchInfo.Throw(e); // rethrow with original stack trace
 			}
-			foreach(Section section in sections.Values)
-				section.Close();
 
 			// do post-compilation sanity checks, ensure everything that had to be exited was exited
-			if(usingStack.Count > 0)
-				throw new InvalidOperationException("Compilation ended but not all files were exited.");
-			if(scopeStack.Count != 1) // only the root scope should be left
-				throw new InvalidOperationException("Compilation ended but not all scopes were exited.");
+			if(fileStack.Count != fileCount)
+				throw new InvalidOperationException("Compilation ended but not all / too many files were exited.");
+			if(scopeStack.Count != scopeCount) // only the root scope should be left
+				throw new InvalidOperationException("Compilation ended but not all / too many scopes were exited.");
 		}
 
+		// filenames must be unique
 		public void EnterFile(String file)
 		{
-			fileStack.Push(file);
-			usingStack.Push(new List<Scope>());
+			if(currentPass == CompilationStep.DeclareGlobalSymbols)
+				if(usingsDict.ContainsKey(file))
+					throw new InvalidOperationException($"Attempted to enter file '{file}' multiple times during pass {currentPass}.");
+				else
+					fileStack.Push((file, usingsDict[file] = new List<Scope>()));
+			else
+				fileStack.Push((file, usingsDict[file]));
 		}
 
 		public void ExitFile()
 		{
-			if(usingStack.Count == 0)
+			if(fileStack.Count == 0)
 				throw new InvalidOperationException("Attempted to exit file when not in a file.");
 			fileStack.Pop();
-			usingStack.Pop();
 		}
 
 		public void UsingScope(params Identifier[] path)
 		{
 			if(currentPass == CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to import a scope during pass {CurrentPass}.");
-			if(usingStack.Count == 0)
+			if(fileStack.Count == 0)
 				throw new InvalidOperationException("Attempted to import a scope while not in a file.");
 			GlobalScope scope = rootScope.GetSubScope(path) ?? throw new LanguageException($"Attmepted to use non-existent global scope {String.Join<Identifier>('.', path)}.");
 			UsingScopes.Add(scope);
@@ -207,7 +235,7 @@ namespace OrganisedAssembly
 			if(currentPass != CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to declare a placeholder symbol during pass {currentPass}.");
 			PlaceholderSymbol placeholder = new PlaceholderSymbol(name.name, Global, resolve);
-			placeholders.AddNode(placeholder);
+			placeholders.Value.AddNode(placeholder);
 			Global.Declare(name, placeholder, functionScope);
 			return placeholder;
 		}
@@ -216,14 +244,14 @@ namespace OrganisedAssembly
 		{
 			if(currentPass != CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to declare a placeholder symbol during pass {currentPass}.");
-			placeholders.AddNode(placeholder);
+			placeholders.Value.AddNode(placeholder);
 		}
 
 		public void DeclareDependency(PlaceholderSymbol dependency, PlaceholderSymbol dependent)
 		{
 			if(currentPass != CompilationStep.SolveGlobalSymbolDependencies)
 				throw new InvalidOperationException($"Attempted to declare a symbol dependency during pass {currentPass}.");
-			placeholders.AddEdge(dependency, dependent);
+			placeholders.Value.AddEdge(dependency, dependent);
 		}
 
 		public void DeclareType(Identifier name, TypeSymbol type)
@@ -236,6 +264,16 @@ namespace OrganisedAssembly
 			GlobalScope scope = new GlobalScope(name, Global, type);
 			Global.Declare(name, type, scope);
 			type.InitMemberScope(scope);
+		}
+
+		public void DeclareTemplate(Identifier name, Template template)
+		{
+			if(currentPass != CompilationStep.DeclareGlobalSymbols)
+				throw new InvalidOperationException($"Attempted to declare a template during pass {currentPass}.");
+			if(IsLocal)
+				throw new LanguageException($"Attempted to declare a template in a local scope.");
+
+			Global.Declare(name, template);
 		}
 
 		public Operand SetRegisterAlias(Identifier name, String register)
@@ -265,20 +303,26 @@ namespace OrganisedAssembly
 		{
 			if(currentPass == CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to resolve a name ({String.Join<Identifier>('.', path)}) during  pass {currentPass}.");
+			
+			return ResolveSymbolInternal(path) ?? throw new LanguageException($"Attempted to reference non-existent variable, constant or function '{String.Join<Identifier>('.', path)}'.");
+		}
+
+		protected Symbol ResolveSymbolInternal(Identifier[] path)
+		{
 			foreach(Scope scope in scopeStack)
 			{
 				Symbol var = scope.GetSymbol(path);
 				if(var != null)
 					return var;
 			}
-			if(usingStack.Count > 0)
+			if(fileStack.Count > 0)
 				foreach(Scope scope in UsingScopes)
 				{
 					Symbol var = scope.GetSymbol(path);
 					if(var != null)
 						return var;
 				}
-			throw new LanguageException($"Attempted to reference non-existent variable, constant or function '{String.Join<Identifier>('.', path)}'.");
+			return null;
 		}
 
 		public int GetStackSize()

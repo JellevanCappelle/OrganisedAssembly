@@ -29,14 +29,15 @@ namespace OrganisedAssembly.Kernel
 			// initialise .text, .data and .bss sections
 			Dictionary<String, StreamWriter> sections = new Dictionary<String, StreamWriter>()
 			{
+				{ "entry", new StreamWriter($"{tempFolder}/entry.asm") },
 				{ "program", new StreamWriter($"{tempFolder}/code.asm") },
 				{ "data", new StreamWriter($"{tempFolder}/data.asm") },
 				{ "uninitialised", new StreamWriter($"{tempFolder}/bss.asm") }
 			};
 
 			// copy template
-			sections["program"].Write(new StreamReader(templatePath).ReadToEnd());
-			sections["program"].WriteLine($"org {virtualBase}");
+			sections["entry"].Write(new StreamReader(templatePath).ReadToEnd());
+			sections["entry"].WriteLine($"org {virtualBase}");
 
 			// add some compiler defined bits
 			List<CompilerAction> program = new List<CompilerAction> {
@@ -46,7 +47,7 @@ namespace OrganisedAssembly.Kernel
 					if(pass == CompilationStep.GenerateCode)
 					{
 						String entry = compiler.ResolveSymbol("main").Nasm; // find main label/function in root scope
-						compiler.Generate($"jmp {entry}", "program"); // generate entry point
+						compiler.Generate($"jmp {entry}", "entry"); // generate entry point
 					}
 				},
 				
@@ -76,6 +77,7 @@ namespace OrganisedAssembly.Kernel
 
 			// include all sections in single .asm file
 			StreamWriter output = new StreamWriter($"{tempFolder}/output.asm");
+			output.WriteLine($"%include \"{tempFolder}/entry.asm\"");
 			output.WriteLine($"%include \"{tempFolder}/code.asm\"");
 			output.WriteLine($"%include \"{tempFolder}/data.asm\"");
 			output.WriteLine($"%include \"{tempFolder}/bss.asm\"");

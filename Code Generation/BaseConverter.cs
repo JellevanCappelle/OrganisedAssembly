@@ -351,11 +351,23 @@ namespace OrganisedAssembly
 								?? throw new LanguageException("Missing function body.");
 			(ValueType size, String name)[] parameters = ParseParameterList(declaration.GetNonterminal("parameterList"))?.ToArray();
 
-			if(name.HasTemplateParams)
-				throw new NotImplementedException(); // TODO
-
-			// generate function
-			GenerateFunction(name.Name, parameters, body, program);
+			// declare the function as a template to avoid compilation if possible
+			Template template = null;
+			program.AddLast((compiler, pass) =>
+			{
+				if(pass == CompilationStep.DeclareGlobalSymbols)
+				{
+					template = new Template(name, compiler.GetState(), () =>
+					{
+						LinkedList<CompilerAction> code = new();
+						GenerateFunction(name.name, parameters, body, code); // TODO: just return code from GenerateFunction()
+						return code;
+					});
+					compiler.DeclareTemplate(name.name, template);
+				}
+				
+				template.Update(pass); // ensure the template keeps up with the current compilation pass
+			});
 		}
 
 		protected void ConvertABICall(JsonProperty call, LinkedList<CompilerAction> program)
@@ -486,7 +498,7 @@ namespace OrganisedAssembly
 
 			program.AddLast((compiler, pass) =>
 			{
-				if(pass != CompilationStep.DeclareGlobalSymbols)
+				if(pass == CompilationStep.SolveGlobalSymbolDependencies)
 					compiler.UsingScope(path);
 			});
 		}
@@ -537,13 +549,13 @@ namespace OrganisedAssembly
 				{
 					TypeSymbol structType = new TypeSymbol((int)SizeSpecifier.QWORD, true, () => structSize);
 					structSizePlaceholder = structType.sizeOfInstancePlaceholder;
-					compiler.DeclareType(structName.Name, structType);
+					compiler.DeclareType(structName.name, structType);
 					compiler.AddAnonymousPlaceholder(structSizePlaceholder);
 				}
 			});
 
 			// enter the structs namesapce
-			program.AddLast((compiler, pass) => compiler.EnterGlobal(structName.Name));
+			program.AddLast((compiler, pass) => compiler.EnterGlobal(structName.name));
 
 			// define (placeholders for) all fields and define all constants
 			List<(ValueType type, String name)> fields = new List<(ValueType type, String name)>();
@@ -662,7 +674,7 @@ namespace OrganisedAssembly
 				});
 
 			// generate function
-			GenerateFunction(name.Name, parameters, body, program);
+			GenerateFunction(name.name, parameters, body, program);
 		}
 
 		void ConvertStatement(JsonProperty node, LinkedList<CompilerAction> program)

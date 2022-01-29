@@ -57,10 +57,9 @@ namespace OrganisedAssembly
 			AssociatedType = type;
 		}
 
-		protected SymbolAndOrScope this[Identifier identifier]
-			=> identifier.HasTemplateParams
-				? templateMembers.GetValueOrDefault(identifier.name)?[identifier.templateParams]
-				: members.GetValueOrDefault(identifier.name);
+		public SymbolAndOrScope this[Identifier identifier]
+			=> templateMembers.GetValueOrDefault(identifier.name)?[identifier.templateParams]
+			   ?? (identifier.HasTemplateParams ? null : members.GetValueOrDefault(identifier.name));
 
 		protected void AddSubScope(GlobalScope scope)
 		{
@@ -98,10 +97,19 @@ namespace OrganisedAssembly
 		public void Declare(Identifier name, Symbol symbol, Scope scope = null)
 		{
 			if(name.HasTemplateParams)
-				throw new VariableException($"Attempted to define global {name} with template parameters in its name.");
-			if(members.ContainsKey(name.name))
-				throw new VariableException($"Attempted to redefine variable or constant {name} in {AbsoluteName}.");
+				throw new VariableException($"Attempted to define global '{name}' with template parameters in its name.");
+			if(members.ContainsKey(name.name) || templateMembers.ContainsKey(name.name))
+				throw new VariableException($"Attempted to redefine '{name}' in {AbsoluteName}.");
 			members[name.name] = new SymbolAndOrScope(symbol, scope);
+		}
+
+		public void Declare(Identifier name, Template template)
+		{
+			if(name.HasTemplateParams)
+				throw new VariableException($"Attempted to define global '{name}' with template parameters in its name.");
+			if(members.ContainsKey(name.name) || templateMembers.ContainsKey(name.name))
+				throw new VariableException($"Attempted to redefine '{name}' in {AbsoluteName}.");
+			templateMembers[name.name] = template;
 		}
 
 		public void ReplacePlaceholder(Identifier name, Symbol symbol)
@@ -116,9 +124,9 @@ namespace OrganisedAssembly
 		}
 
 		public Symbol GetSymbol(params Identifier[] path)
-			=> (path.Length == 1
-				? this[path[0]]
-				: GetSubScope(path[0])?.GetSymbol(path[1..]))?.symbol;
+			=> path.Length == 1
+				? this[path[0]]?.symbol
+				: GetSubScope(path[0])?.GetSymbol(path[1..]);
 
 		protected override Scope CreateAnonymousScope() => new GlobalScope(true);
 	}

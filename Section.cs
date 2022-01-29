@@ -35,7 +35,7 @@ namespace OrganisedAssembly
 					backlog.AddLast(s);
 			}
 
-			public void Write(StreamWriter target)
+			public void Write(TextWriter target)
 			{
 				String result = line.ToString();
 				if(result != null) target.WriteLine(result);
@@ -44,16 +44,24 @@ namespace OrganisedAssembly
 			}
 		}
 
-		private StreamWriter target;
+		private readonly bool owner = false;
+		private readonly StreamWriter target;
+		private readonly StringWriter tmpTarget = new StringWriter();
 		private LinkedList<BackLogItem> backlog = new LinkedList<BackLogItem>();
 
-		public Section(StreamWriter target) => this.target = target;
+		public Section(StreamWriter target)
+		{
+			this.target = target;
+			owner = true;
+		}
+
+		public Section(Section section) => target = section.target;
 
 		public void Generate(String line)
 		{
 			if(line == null) return;
 			if(backlog.Count == 0)
-				target.WriteLine(line);
+				tmpTarget.WriteLine(line);
 			else
 				backlog.Last.Value.Append(line.ToString());
 		}
@@ -77,7 +85,7 @@ namespace OrganisedAssembly
 			{
 				if(item.dependency == compilerEvent)
 					if(dependency == null)
-						item.Write(target);
+						item.Write(tmpTarget);
 					else
 						dependency.Merge(item);
 				else
@@ -88,8 +96,11 @@ namespace OrganisedAssembly
 
 		public void Close()
 		{
+			target.Write(tmpTarget.ToString());
+			tmpTarget.Close();
 			target.Flush();
-			target.Close();
+			if(owner)
+				target.Close();
 		}
 	}
 }
