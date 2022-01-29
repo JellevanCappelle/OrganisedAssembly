@@ -352,22 +352,13 @@ namespace OrganisedAssembly
 			(ValueType size, String name)[] parameters = ParseParameterList(declaration.GetNonterminal("parameterList"))?.ToArray();
 
 			// declare the function as a template to avoid compilation if possible
-			Template template = null;
-			program.AddLast((compiler, pass) =>
+			Template template = new Template(name, () =>
 			{
-				if(pass == CompilationStep.DeclareGlobalSymbols)
-				{
-					template = new Template(name, compiler.GetState(), () =>
-					{
-						LinkedList<CompilerAction> code = new();
-						GenerateFunction(name.name, parameters, body, code); // TODO: just return code from GenerateFunction()
-						return code;
-					});
-					compiler.DeclareTemplate(name.name, template);
-				}
-				
-				template.Update(pass); // ensure the template keeps up with the current compilation pass
+				LinkedList<CompilerAction> code = new();
+				GenerateFunction(name.name, parameters, body, code); // TODO: just return code from GenerateFunction()
+				return code;
 			});
+			program.AddLast(template.Action);
 		}
 
 		protected void ConvertABICall(JsonProperty call, LinkedList<CompilerAction> program)
@@ -433,7 +424,7 @@ namespace OrganisedAssembly
 					else // casted pointer to a struct
 					{
 						structType = (compiler.ResolveSymbol(typePath) as TypeSymbol) ?? throw new LanguageException($"Type unknown: '{typePath}'.");
-						invalidMethod = new LanguageException($"'{methodPath}()' is not a valid non-static method of type '[{typePath}]'.");
+						invalidMethod = new LanguageException($"'{methodPath}()' is not a valid non-static method of type '{typePath}'.");
 						JsonProperty cast = reference.GetChildNonterminal() ?? throw malformed;
 						if(cast.Name == "regPointerCast")
 							structOperand = new Operand(cast.GetNonterminal("gpRegister")?.Flatten() ?? throw malformed);
@@ -658,23 +649,27 @@ namespace OrganisedAssembly
 			JsonProperty body = method.GetNonterminal("localBody")
 								?? throw new LanguageException("Missing function body.");
 
-			if(name.HasTemplateParams)
-				throw new NotImplementedException(); // TODO
-
+			
 			// construct the full parameter list (including the implicit 'this' parameter if the method is non-static)
 			IEnumerable<(ValueType type, String name)> explicitParameters = ParseParameterList(declaration.GetNonterminal("parameterList")) ?? new (ValueType type, String name)[0];
 			(ValueType type, String name)[] parameters = (staticMethod ? explicitParameters : explicitParameters.Prepend((null, "this"))).ToArray(); // insert temporary 'this' parameter without type, to be replaced later
 
-			// ensure that during compilation the 'this' parameter has the right type
-			if(!staticMethod)
-				program.AddLast((compiler, pass) =>
-				{
-					if(pass == CompilationStep.DeclareGlobalSymbols)
-						parameters[0].type = new ValueType(compiler.GetCurrentAssociatedType());
-				});
+			// declare the method as a template to avoid compilation if possible
+			Template template = new Template(name, () =>
+			{
+				LinkedList<CompilerAction> code = new();
+				GenerateFunction(name.name, parameters, body, code); // TODO: just return code from GenerateFunction()
 
-			// generate function
-			GenerateFunction(name.name, parameters, body, program);
+				// ensure that during compilation the 'this' parameter has the right type
+				if(!staticMethod)
+					code.AddFirst((compiler, pass) =>
+					{
+						if(pass == CompilationStep.DeclareGlobalSymbols)
+							parameters[0].type = new ValueType(compiler.GetCurrentAssociatedType());
+					});
+				return code;
+			});
+			program.AddLast(template.Action);
 		}
 
 		void ConvertStatement(JsonProperty node, LinkedList<CompilerAction> program)

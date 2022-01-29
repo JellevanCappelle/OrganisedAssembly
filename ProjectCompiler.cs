@@ -62,20 +62,20 @@ namespace OrganisedAssembly
 				String cacheFile = Path.ChangeExtension(Path.Combine(cacheFolder, Path.GetRelativePath(inputFolder, inputFile)), "json");
 				if(File.Exists(cacheFile) && new FileInfo(cacheFile).Length > 0 && File.GetLastWriteTime(cacheFile) >= File.GetLastWriteTime(inputFile))
 				{
-					Console.Write($"Loading cached parse tree: {cacheFile}... ");
+					if(CompilerSettings.Verbose) Console.Write($"Loading cached parse tree: {cacheFile}... ");
 					parseTree = Parser.Load(cacheFile);
-					Console.WriteLine("Done!");
+					if(CompilerSettings.Verbose) Console.WriteLine("Done!");
 				}
 				else
 				{
-					Console.Write($"Parsing: {inputFile}... ");
+					if(CompilerSettings.Verbose) Console.Write($"Parsing: {inputFile}... ");
 					parseTree = Parser.Parse(inputFile, cacheFile);
-					Console.WriteLine("Done!");
+					if(CompilerSettings.Verbose) Console.WriteLine("Done!");
 				}
 				
-				Console.Write("Converting parse tree... ");
+				if(CompilerSettings.Verbose) Console.Write("Converting parse tree... ");
 				program.AddRange(converter.ConvertTree(parseTree, inputFile));
-				Console.WriteLine("Done!");
+				if(CompilerSettings.Verbose) Console.WriteLine("Done!");
 			}
 		}
 	}

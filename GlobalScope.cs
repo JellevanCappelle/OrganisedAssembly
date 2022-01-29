@@ -33,10 +33,11 @@ namespace OrganisedAssembly
 		protected readonly Dictionary<String, SymbolAndOrScope> members = new Dictionary<String, SymbolAndOrScope>();
 		protected readonly Dictionary<String, Template> templateMembers = new Dictionary<String, Template>();
 		
-		internal GlobalScope(bool anonymous = false) // root / anonymous scope constructor
+		internal GlobalScope(bool anonymous = false, TypeSymbol type = null) // root / anonymous scope constructor
 		{
 			Name = null;
 			IsAnonymous = anonymous;
+			AssociatedType = type;
 		}
 
 		internal GlobalScope(Identifier name, GlobalScope parent)

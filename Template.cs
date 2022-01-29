@@ -10,32 +10,35 @@ namespace OrganisedAssembly
 	{
 		protected readonly TemplateName name;
 		protected readonly Func<IEnumerable<CompilerAction>> generateCode;
-		protected readonly ICompilerState state;
 		protected readonly Dictionary<Symbol[], TemplateInstance> instances = new Dictionary<Symbol[], TemplateInstance>(new ArrayEqualityComparer<Symbol>());
 
+		protected ICompilerState state;
 		protected CompilationStep currentPass = CompilationStep.None;
 		protected IEnumerable<CompilerAction> code = null;
 		protected IEnumerable<CompilerAction> Code => code = code ?? generateCode();
 
-		public Template(TemplateName name, ICompilerState state, IEnumerable<CompilerAction> code)
+		public Template(TemplateName name, IEnumerable<CompilerAction> code)
 		{
 			this.name = name;
-			this.state = state;
 			this.code = code;
 		}
 
-		public Template(TemplateName name, ICompilerState state, Func<IEnumerable<CompilerAction>> generateCode)
+		public Template(TemplateName name, Func<IEnumerable<CompilerAction>> generateCode)
 		{
 			this.name = name;
-			this.state = state;
 			this.generateCode = generateCode;
 		}
 
-		public void Update(CompilationStep pass)
+		public void Action(ICompiler compiler, CompilationStep pass)
 		{
-			currentPass = pass;
-			foreach(TemplateInstance instance in instances.Values)
-				instance.Compile(pass);
+			if((currentPass = pass) == CompilationStep.DeclareGlobalSymbols)
+			{
+				state = compiler.GetState();
+				compiler.DeclareTemplate(name.name, this);
+			}
+			else // can't have any instances yet during DeclareGlobalSymbols
+				foreach(TemplateInstance instance in instances.Values)
+					instance.Compile(pass);
 		}
 
 		public SymbolAndOrScope this[params Symbol[] parameters]
@@ -75,6 +78,13 @@ namespace OrganisedAssembly
 			// initialise the scope with the template parameters
 			foreach((String param, Symbol value) in name.parameterNames.Zip(parameters))
 				lookup.DeclareSymbol(param, value);
+
+			if(CompilerSettings.Verbose)
+			{
+				String path = String.Join<Identifier>('.', compiler.GetCurrentPath());
+				if(path.Length > 0) path += '.';
+				Console.WriteLine($"Instantiating template: '{path}{name}'");
+			}
 		}
 
 		public void Compile(CompilationStep upTo) => compiler.Compile(code, upTo);

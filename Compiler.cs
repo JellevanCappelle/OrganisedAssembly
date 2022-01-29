@@ -26,10 +26,9 @@ namespace OrganisedAssembly
 		protected LocalScope Local => CurrentScope as LocalScope;
 		protected GlobalScope Global => CurrentScope as GlobalScope;
 
-		public Compiler(Dictionary<String, StreamWriter> sections, bool verbose = true)
+		public Compiler(Dictionary<String, StreamWriter> sections)
 		{
-			mainCompiler = true; // this compiler is not a instantiation of another compilers state
-			this.verbose = verbose;
+			this.verbose = CompilerSettings.Verbose;
 			this.sections = new Dictionary<String, Section>();
 			foreach(KeyValuePair<String, StreamWriter> section in sections)
 				this.sections[section.Key] = new Section(section.Value);
@@ -50,7 +49,7 @@ namespace OrganisedAssembly
 					currentPass++;
 				for(; currentPass <= upTo; currentPass++)
 				{
-					if(verbose) Console.Write($"Running compilation step: {currentPass}... ");
+					if(verbose) Console.WriteLine($"Running compilation step: {currentPass}... ");
 
 					// create a new TopologicalSort if necessary
 					if(currentPass == CompilationStep.DeclareGlobalSymbols)
@@ -73,8 +72,6 @@ namespace OrganisedAssembly
 					if(currentPass == CompilationStep.GenerateCode)
 						foreach(Section section in sections.Values)
 							section.Close();
-
-					if(verbose) Console.WriteLine("Done!");
 				}
 			}
 			catch(LanguageException e)

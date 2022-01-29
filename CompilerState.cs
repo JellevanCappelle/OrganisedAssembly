@@ -18,7 +18,6 @@ namespace OrganisedAssembly
 
 		// non-captured state
 		protected readonly bool verbose = false;
-		protected readonly bool mainCompiler = false;
 		protected bool placeholdersOwner = false;
 		protected CompilationStep currentPass = CompilationStep.None;
 		protected int currentLine = 0;
@@ -58,14 +57,14 @@ namespace OrganisedAssembly
 				usingsDict = compiler.usingsDict;
 				rootScope = compiler.rootScope;
 				placeholders = compiler.placeholders;
-				scopeStack = compiler.scopeStack.ToArray();
-				fileStack = compiler.fileStack.ToArray();
+				scopeStack = compiler.scopeStack.Reverse().ToArray(); // Stack<T>.ToArray() gives the elements in the opposite order in which they were pushed
+				fileStack = compiler.fileStack.Reverse().ToArray();
 			}
 
 			public (ICompiler, GlobalScope) Instantiate()
 			{
 				Compiler compiler = new Compiler(this);
-				GlobalScope scope = new GlobalScope(true);
+				GlobalScope scope = new GlobalScope(true, compiler.GetCurrentAssociatedType());
 				compiler.scopeStack.Push(scope); // push an anonymous scope, so that any symbols defined in this compiler are invisible outside of it
 				return (compiler, scope);
 			}

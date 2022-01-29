@@ -2,6 +2,8 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Diagnostics;
+
 using OrganisedAssembly.Kernel;
 using OrganisedAssembly.Win64;
 
@@ -11,20 +13,37 @@ namespace OrganisedAssembly
 	{
 		static void Main(string[] args)
 		{
-			if(args.Length == 0)
+			// parse arguments
+			String projectFile = null;
+			Stopwatch time = null;
+			foreach(String arg in args)
+				if(!arg.StartsWith('-'))
+					projectFile = arg;
+				else switch(arg.Substring(1))
+				{
+					case "v":
+					case "verbose":
+						CompilerSettings.Verbose = true;
+						time = Stopwatch.StartNew();
+						break;
+					default:
+						Console.WriteLine($"Unsupported option '{arg}'.");
+						return;
+				}
+			if(projectFile == null)
 			{
 				Console.WriteLine("Please specify a project file.");
 				return;
 			}
-			String projectFile = args[0];
+
+
+			// read the project settings
 			String projectDir = Path.GetDirectoryName(Path.GetFullPath(projectFile));
 			if(!File.Exists(projectFile))
 			{
 				Console.WriteLine($"This file doesn't exist: {projectFile}");
 				return;
 			}
-
-			// read the project settings
 			ProjectSettings project;
 			try
 			{
@@ -35,12 +54,14 @@ namespace OrganisedAssembly
 				Console.WriteLine("Invalid project file.");
 				return;
 			}
+
 			// fix paths
 			project.outputFile = Path.GetFullPath(Path.Combine(projectDir, project.outputFile));
 			project.sourceDir = Path.GetFullPath(Path.Combine(projectDir, project.sourceDir));
 			project.parserCacheDir = Path.GetFullPath(Path.Combine(projectDir, project.parserCacheDir));
 			project.tempDir = Path.GetFullPath(Path.Combine(projectDir, project.tempDir));
-			Console.WriteLine(project);
+			
+			if(CompilerSettings.Verbose) Console.WriteLine(project);
 
 			// compile
 			ActionConverter converter =
@@ -52,6 +73,9 @@ namespace OrganisedAssembly
 				project.platform == "win64" && project.format == "win64" ? new Win64Compiler(project, converter) :
 				throw new NotImplementedException($"Combination of platform '{project.platform}' and format '{project.format}' not implemented.");
 			compiler.Compile();
+
+			if(CompilerSettings.Verbose)
+				Console.Write($"Finished in {time.Elapsed.TotalSeconds:f3} seconds.");
 		}
 
 		public static void PrintTree(JsonProperty node, int depth = 0)
