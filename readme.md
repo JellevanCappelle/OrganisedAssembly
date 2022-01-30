@@ -6,4 +6,6 @@
 ## Usage
 `oasm <path/to/project.json>`, TODO: describe the format of project files
 
+Use the `-v` or `-verbose` option to produce verbose output.
+
 Example projects are available [here](https://github.com/JellevanCappelle/OASM-Examples).
