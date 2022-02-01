@@ -42,7 +42,7 @@ namespace OrganisedAssembly
 
 			if(program == null)
 				throw new LanguageException("Attempted to compile a non-existent program.");
-			
+
 			try
 			{
 				if(currentPass == CompilationStep.None) // skip the 'None' step
@@ -223,17 +223,29 @@ namespace OrganisedAssembly
 			Global.Declare(name, new FunctionSymbol(label, metadata), new LocalScope(name));
 		}
 
-		public PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<Symbol> resolve) => DeclarePlaceholder(name, resolve, null);
-		public PlaceholderSymbol DeclareFunctionPlaceholder(Identifier name, Func<FunctionSymbol> resolve) => DeclarePlaceholder(name, resolve, new LocalScope(name));
-		protected PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<Symbol> resolve, LocalScope functionScope)
+		public PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<PlaceholderSymbol, Symbol> resolve)
 		{
 			if(IsLocal)
 				throw new InvalidOperationException("Attempted to declare a placeholder symbol in a local scope.");
 			if(currentPass != CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to declare a placeholder symbol during pass {currentPass}.");
-			PlaceholderSymbol placeholder = new PlaceholderSymbol(name.name, Global, resolve);
+
+			PlaceholderSymbol placeholder = new PlaceholderSymbol(name, Global, resolve);
 			placeholders.Value.AddNode(placeholder);
-			Global.Declare(name, placeholder, functionScope);
+			Global.DeclareSymbol(placeholder.Name, placeholder);
+			return placeholder;
+		}
+
+		public FunctionPlaceholderSymbol DeclareFunctionPlaceholder(Identifier name, (ValueType, String)[] parameters, Func<PlaceholderSymbol, FunctionSymbol> resolve)
+		{
+			if(IsLocal)
+				throw new InvalidOperationException("Attempted to declare a function placeholder symbol in a local scope.");
+			if(currentPass != CompilationStep.DeclareGlobalSymbols)
+				throw new InvalidOperationException($"Attempted to declare a function placeholder symbol during pass {currentPass}.");
+
+			FunctionPlaceholderSymbol placeholder = new FunctionPlaceholderSymbol(name, parameters, Global, resolve);
+			placeholders.Value.AddNode(placeholder);
+			Global.Declare(placeholder.Name, placeholder, new LocalScope(name));
 			return placeholder;
 		}
 

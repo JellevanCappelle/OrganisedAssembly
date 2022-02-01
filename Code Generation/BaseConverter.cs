@@ -596,7 +596,7 @@ namespace OrganisedAssembly
 							}
 							else
 							{
-								placeholder = compiler.DeclarePlaceholder(name, () =>
+								placeholder = compiler.DeclarePlaceholder(name, (_) =>
 								{
 									type.ResolveDependency();
 									Symbol result = new ConstantSymbol(structSize.ToString(), type);

@@ -188,7 +188,6 @@ namespace OrganisedAssembly.Win64
 		protected override void GenerateFunction(String name, (ValueType type, String name)[] parameters, JsonProperty body, LinkedList<CompilerAction> program)
 		{
 			// prologue
-			PlaceholderSymbol placeholder = null;
 			program.AddLast((compiler, pass) =>
 			{
 				if(pass == CompilationStep.DeclareGlobalSymbols)
@@ -198,11 +197,14 @@ namespace OrganisedAssembly.Win64
 						compiler.DeclareFunction(name, label, new FunctionMetadata());
 					else
 					{
-						placeholder = compiler.DeclareFunctionPlaceholder(name, () =>
+						// declare a function placeholder symbol if the function has parameters
+						FunctionPlaceholderSymbol placeholder = compiler.DeclareFunctionPlaceholder(name, parameters, (placeholder) =>
 						{
+							(ValueType type, String name)[] parameters = (placeholder as FunctionPlaceholderSymbol)?.parameters
+																		 ?? throw new InvalidOperationException($"Encountered wrong placeholder symbol type for function '{name}'.");
 							foreach((ValueType type, String name) in parameters)
 								type.ResolveDependency();
-							FunctionMetadata metadata = new FunctionMetadata(parameters.Select(x => (x.type, x.name)).ToArray());
+							FunctionMetadata metadata = new FunctionMetadata(parameters);
 							return new FunctionSymbol(label, metadata);
 						});
 					}
@@ -211,8 +213,9 @@ namespace OrganisedAssembly.Win64
 				}
 				else if(pass == CompilationStep.SolveGlobalSymbolDependencies)
 				{
-					if(placeholder != null)
-						foreach((ValueType type, String name) in parameters)
+					// declare dependencies if the function has parameters
+					if(compiler.ResolveSymbol(name) is FunctionPlaceholderSymbol placeholder)
+						foreach((ValueType type, String name) in placeholder.parameters)
 							type.DeclareDependency(placeholder, compiler);
 
 					compiler.EnterLocal(name);
@@ -224,14 +227,16 @@ namespace OrganisedAssembly.Win64
 					compiler.MoveStackPointer(-8); // declare stack space occupied by return address
 
 					// declare all parameters and move them to the shadow space
-					if(parameters != null)
-						for(int i = 0; i < parameters.Length; i++)
-						{
-							int offset = 8 + i * 8;
-							compiler.DeclareExistingStackVariable(parameters[i].type, parameters[i].name, offset);
-							if(i < 4) // handle register / shadow space parameters
-								compiler.Generate($"mov [rsp + {offset}], {parameterRegisters[i]}", "program"); // TODO: adapt size of register when possible?
-						}
+					FunctionSymbol function = compiler.ResolveSymbol(name) as FunctionSymbol
+											  ?? throw new InvalidOperationException($"Attempted to generate code while no symbol was defined for function '{name}'.");
+					(ValueType type, String name)[] solvedParameters = function.Metadata.parameters;
+					for(int i = 0; i < solvedParameters.Length; i++)
+					{
+						int offset = 8 + i * 8;
+						compiler.DeclareExistingStackVariable(solvedParameters[i].type, solvedParameters[i].name, offset);
+						if(i < 4) // handle register / shadow space parameters
+							compiler.Generate($"mov [rsp + {offset}], {parameterRegisters[i]}", "program"); // TODO: adapt size of register when possible?
+					}
 
 					compiler.Generate(new DeferredSymbol(() =>
 					{

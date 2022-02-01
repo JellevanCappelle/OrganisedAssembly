@@ -57,8 +57,8 @@ namespace OrganisedAssembly
 		void DeclareExistingStackVariable(ValueType type, Identifier name, int offset);
 		void DeclareConstant(Identifier name, String nasmRepresentation, ValueType type = null);
 		void DeclareFunction(Identifier name, String label, FunctionMetadata metadata);
-		PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<Symbol> resolve);
-		PlaceholderSymbol DeclareFunctionPlaceholder(Identifier name, Func<FunctionSymbol> resolve);
+		PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<PlaceholderSymbol, Symbol> resolve);
+		FunctionPlaceholderSymbol DeclareFunctionPlaceholder(Identifier name, (ValueType, String)[] parameters, Func<PlaceholderSymbol, FunctionSymbol> resolve);
 		void AddAnonymousPlaceholder(PlaceholderSymbol placeholder);
 		void DeclareDependency(PlaceholderSymbol dependency, PlaceholderSymbol dependent);
 		void DeclareType(Identifier name, TypeSymbol type);

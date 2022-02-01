@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using System.Text.Json;
 
 namespace OrganisedAssembly
@@ -18,6 +17,16 @@ namespace OrganisedAssembly
 		public int Size => defined ? size : throw new InvalidOperationException("Value type undefined.");
 		public SizeSpecifier SizeSpec => defined ? sizeSpec : throw new InvalidOperationException("Value type undefined.");
 		public TypeSymbol Type => defined ? type : throw new InvalidOperationException("Value type undefined.");
+
+		public ValueType(ValueType original) // copy constructor
+		{
+			sizeSpec = original.sizeSpec;
+			size = original.size;
+			typeName = original.typeName;
+			dependency = original.dependency;
+			type = original.type;
+			defined = original.defined;
+		}
 
 		public ValueType(TypeSymbol type) => Solve(type);
 
@@ -95,6 +104,9 @@ namespace OrganisedAssembly
 
 		protected void Solve(TypeSymbol type)
 		{
+			if(defined)
+				throw new InvalidOperationException($"Attempted to resolve the same type '{typeName}' twice.");
+
 			this.type = type;
 			sizeSpec = type.Size;
 			size = type.sizeOfValue;

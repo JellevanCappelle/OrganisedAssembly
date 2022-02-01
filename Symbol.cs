@@ -92,15 +92,17 @@ namespace OrganisedAssembly
 	{
 		public override String Nasm => throw new InvalidOperationException("Attempted to convert placeholder symbol to its NASM equivalent.");
 
-		protected readonly String name;
+		protected readonly Identifier name;
 		protected readonly GlobalScope scope;
-		protected readonly Func<Symbol> resolve;
+		protected readonly Func<PlaceholderSymbol, Symbol> resolve;
+
+		public Identifier Name => name;
 		
 		protected bool resolved = false;
 		protected Symbol result = null;
 		public Symbol Result => resolved ? result : throw new InvalidOperationException("Attempted to obtain the result of an unresolved placeholder symbol.");
 
-		public PlaceholderSymbol(String name, GlobalScope scope, Func<Symbol> resolve)
+		public PlaceholderSymbol(Identifier name, GlobalScope scope, Func<PlaceholderSymbol, Symbol> resolve)
 		{
 			if(name == null || scope == null || resolve == null)
 				throw new ArgumentNullException();
@@ -113,7 +115,7 @@ namespace OrganisedAssembly
 		{
 			name = null;
 			scope = null;
-			resolve = () =>
+			resolve = (x) =>
 			{
 				action();
 				return null;
@@ -125,10 +127,20 @@ namespace OrganisedAssembly
 			if(resolved)
 				throw new InvalidOperationException("Attempted to resolve placeholder symbol twice.");
 			resolved = true;
-			result = resolve();
+			result = resolve(this);
 			scope?.ReplacePlaceholder(name, result);
 		}
 	}
+
+	class FunctionPlaceholderSymbol : PlaceholderSymbol
+	{
+		public (ValueType type, String name)[] parameters;
+
+		public FunctionPlaceholderSymbol(Identifier name, (ValueType type, String name)[] parameters, GlobalScope scope, Func<PlaceholderSymbol, Symbol> resolve)
+			: base(name, scope, resolve)
+			=> this.parameters = parameters.Select(x => (new ValueType(x.type), x.name)).ToArray(); // deep-copy the parameter types
+	}
+
 
 	class TypeSymbol : Symbol
 	{
