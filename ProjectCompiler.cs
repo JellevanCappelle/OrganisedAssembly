@@ -58,21 +58,9 @@ namespace OrganisedAssembly
 			// parse and convert all input files
 			foreach(String inputFile in Directory.EnumerateFiles(inputFolder, "*.oasm", SearchOption.AllDirectories))
 			{
-				JsonProperty parseTree;
 				String cacheFile = Path.ChangeExtension(Path.Combine(cacheFolder, Path.GetRelativePath(inputFolder, inputFile)), "json");
-				if(File.Exists(cacheFile) && new FileInfo(cacheFile).Length > 0 && File.GetLastWriteTime(cacheFile) >= File.GetLastWriteTime(inputFile))
-				{
-					if(CompilerSettings.Verbose) Console.Write($"Loading cached parse tree: {cacheFile}... ");
-					parseTree = Parser.Load(cacheFile);
-					if(CompilerSettings.Verbose) Console.WriteLine("Done!");
-				}
-				else
-				{
-					if(CompilerSettings.Verbose) Console.Write($"Parsing: {inputFile}... ");
-					parseTree = Parser.Parse(inputFile, cacheFile);
-					if(CompilerSettings.Verbose) Console.WriteLine("Done!");
-				}
-				
+				JsonProperty parseTree = Parser.Parse(inputFile, cacheFile);
+
 				if(CompilerSettings.Verbose) Console.Write("Converting parse tree... ");
 				program.AddRange(converter.ConvertTree(parseTree, inputFile));
 				if(CompilerSettings.Verbose) Console.WriteLine("Done!");

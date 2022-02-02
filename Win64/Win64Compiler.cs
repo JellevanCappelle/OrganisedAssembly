@@ -13,6 +13,7 @@ namespace OrganisedAssembly.Win64
 		protected readonly String templatePath = compilerDir + "\\Win64\\template.asm";
 		protected readonly String compileScript = compilerDir + "\\Win64\\compile.bat";
 		protected readonly String stdioLib = compilerDir + "\\Win64\\Win64StdIO.oasm";
+		protected readonly String stdioCache = compilerDir + "\\Win64\\Win64StdIO.json";
 		protected readonly String libPath;
 		
 		public Win64Compiler(ProjectSettings project, ActionConverter converter, String libPath = null) : base(project, converter)
@@ -123,7 +124,7 @@ namespace OrganisedAssembly.Win64
 
 			// convert to compiler actions
 			if(project.runtime == "stdio")
-				program.AddRange(converter.ConvertTree(Parser.Parse(stdioLib), stdioLib));
+				program.AddRange(converter.ConvertTree(Parser.Parse(stdioLib, stdioCache), stdioLib));
 			else if(project.runtime != "none")
 				throw new NotImplementedException($"Unsupported runtime: '{project.runtime}'.");
 			ParseAndConvertSource(program);
