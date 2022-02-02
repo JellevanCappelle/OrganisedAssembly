@@ -111,36 +111,42 @@ namespace OrganisedAssembly
 			this.resolve = resolve;
 		}
 
-		public PlaceholderSymbol(Action action)
+		public PlaceholderSymbol(Func<PlaceholderSymbol, Symbol> resolve)
 		{
 			name = null;
 			scope = null;
-			resolve = (x) =>
-			{
-				action();
-				return null;
-			};
+			this.resolve = resolve;
 		}
 
 		public void Resolve()
 		{
 			if(resolved)
 				throw new InvalidOperationException("Attempted to resolve placeholder symbol twice.");
-			resolved = true;
 			result = resolve(this);
+			resolved = true;
 			scope?.ReplacePlaceholder(name, result);
 		}
 	}
 
 	class FunctionPlaceholderSymbol : PlaceholderSymbol
 	{
-		public (ValueType type, String name)[] parameters;
+		public readonly (ValueType type, String name)[] parameters;
 
 		public FunctionPlaceholderSymbol(Identifier name, (ValueType type, String name)[] parameters, GlobalScope scope, Func<PlaceholderSymbol, Symbol> resolve)
 			: base(name, scope, resolve)
 			=> this.parameters = parameters.Select(x => (new ValueType(x.type), x.name)).ToArray(); // deep-copy the parameter types
 	}
 
+	class StructLayoutSymbol : PlaceholderSymbol
+	{
+		public Symbol[] fieldTypes;
+
+		public StructLayoutSymbol(Action<StructLayoutSymbol> action) : base(x =>
+		{
+			action((StructLayoutSymbol)x);
+			return null;
+		}) { }
+	}
 
 	class TypeSymbol : Symbol
 	{
@@ -163,7 +169,7 @@ namespace OrganisedAssembly
 				SizeOfInstanceDefined = true;
 			}
 		}
-		public readonly PlaceholderSymbol sizeOfInstancePlaceholder = null;
+		public readonly StructLayoutSymbol layoutPlaceholder = null;
 
 		protected GlobalScope memberScope = null; // scope containing all member symbols of this type
 		public GlobalScope MemberScope => memberScope ?? throw new InvalidOperationException("Attempted to access member scope of a type before it is defined.");
@@ -180,13 +186,11 @@ namespace OrganisedAssembly
 			sizeSpecifier = Enum.IsDefined(typeof(SizeSpecifier), sizeOfValue) ? (SizeSpecifier)sizeOfValue : SizeSpecifier.NONE;
 		}
 
-		public TypeSymbol(int sizeOfValue, bool pointer, Func<int> sizeOfInstance)
+		public TypeSymbol(Func<StructLayoutSymbol, int> sizeOfInstance) // constructor for structs with a yet to be defined size
 		{
-			if(pointer && sizeOfValue != (int)SizeSpecifier.QWORD)
-				throw new LanguageException("Cannot declare a pointer type with a pointer size other than QWORD.");
-			this.sizeOfValue = sizeOfValue;
-			this.pointer = pointer;
-			sizeOfInstancePlaceholder = new PlaceholderSymbol(() => { SizeOfInstance = sizeOfInstance(); });
+			sizeOfValue = (int)SizeSpecifier.QWORD;
+			pointer = true;
+			layoutPlaceholder = new StructLayoutSymbol(x => SizeOfInstance = sizeOfInstance(x));
 
 			// if sizeOfValue is a BYTE, WORD, DWORD or QWORD, use the appropriate SizeSpecifier
 			sizeSpecifier = Enum.IsDefined(typeof(SizeSpecifier), sizeOfValue) ? (SizeSpecifier)sizeOfValue : SizeSpecifier.NONE;

@@ -538,8 +538,8 @@ namespace OrganisedAssembly
 			{
 				if(pass == CompilationStep.DeclareGlobalSymbols)
 				{
-					TypeSymbol structType = new TypeSymbol((int)SizeSpecifier.QWORD, true, () => structSize);
-					structSizePlaceholder = structType.sizeOfInstancePlaceholder;
+					TypeSymbol structType = new TypeSymbol(_ => structSize);
+					structSizePlaceholder = structType.layoutPlaceholder;
 					compiler.DeclareType(structName.name, structType);
 					compiler.AddAnonymousPlaceholder(structSizePlaceholder);
 				}
@@ -596,7 +596,7 @@ namespace OrganisedAssembly
 							}
 							else
 							{
-								placeholder = compiler.DeclarePlaceholder(name, (_) =>
+								placeholder = compiler.DeclarePlaceholder(name, _ =>
 								{
 									type.ResolveDependency();
 									Symbol result = new ConstantSymbol(structSize.ToString(), type);
@@ -627,12 +627,8 @@ namespace OrganisedAssembly
 
 			// handle all methods
 			foreach(JsonProperty statement in statements)
-			{
-				JsonProperty? method = statement.GetNonterminal("structMethod");
-				if(method == null)
-					continue;
-				ConvertStructMethod((JsonProperty)method, program);
-			}
+				if(statement.GetNonterminal("structMethod") is JsonProperty method)
+					ConvertStructMethod(method, program);
 
 			// exit the structs namesapce
 			program.AddLast((compiler, pass) => compiler.ExitGlobal());

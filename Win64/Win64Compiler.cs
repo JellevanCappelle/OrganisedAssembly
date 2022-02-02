@@ -68,12 +68,8 @@ namespace OrganisedAssembly.Win64
 					}
 				},
 
-				// declare builtins
-				(compiler, pass) =>
-				{
-					if(pass == CompilationStep.DeclareGlobalSymbols)
-						Builtins.GenerateBuiltinTypes(compiler);
-				},
+				// declare common builtins
+				Builtins.BuiltinTypes(),
 
 				// declare functions from Kernel32.dll
 				(compiler, pass) =>

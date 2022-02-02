@@ -46,6 +46,7 @@ namespace OrganisedAssembly
 				throw new LanguageException($"Unexpected sub-rule name in sizeOrType: {sizeOrType.Name}.");
 		}
 
+		public static implicit operator ValueType(SizeSpecifier size) => new ValueType(size);
 		public ValueType(SizeSpecifier size)
 		{
 			this.size = (int)(sizeSpec = size);

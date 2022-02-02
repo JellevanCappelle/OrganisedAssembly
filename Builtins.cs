@@ -1,33 +1,83 @@
-﻿namespace OrganisedAssembly
+﻿using System;
+
+namespace OrganisedAssembly
 {
 	static class Builtins
 	{
-		public static void GenerateBuiltinTypes(ICompiler compiler)
+		public static CompilerAction BuiltinTypes()
 		{
-			// String type
-			compiler.DeclareType("String", new TypeSymbol((int)SizeSpecifier.QWORD, (int)CompilerSettings.StringLengthSize, true)); // declare it as a pointer type for a 4-byte struct containing only the string length
-			compiler.EnterGlobal("String");
-			compiler.DeclareConstant("length", "0", new ValueType(CompilerSettings.StringLengthSize));
-			compiler.DeclareConstant("c_str", ((int)CompilerSettings.StringLengthSize).ToString());
-			compiler.ExitGlobal();
-
 			// Array template
-			//compiler.DeclareTemplate("Array", new Template(new TemplateName("Array", "T"), new CompilerAction[] { ArrayAction }));
+			Template arrayTemplate = new Template(new TemplateName("Array", "T"), new CompilerAction[] { ArrayAction });
+
+			return (compiler, pass) =>
+			{
+				if(pass == CompilationStep.DeclareGlobalSymbols)
+				{
+					// String type
+					compiler.DeclareType("String", new TypeSymbol((int)SizeSpecifier.QWORD, (int)CompilerSettings.StringLengthSize, true)); // declare it as a pointer type for a 4-byte struct containing only the string length
+					compiler.EnterGlobal("String");
+					compiler.DeclareConstant("length", "0", CompilerSettings.StringLengthSize);
+					compiler.DeclareConstant("c_str", ((int)CompilerSettings.StringLengthSize).ToString());
+					compiler.ExitGlobal();
+				}
+
+				arrayTemplate.Action(compiler, pass);
+			};
 		}
 
 		static void ArrayAction(ICompiler compiler, CompilationStep pass)
 		{
-			int instanceSize = (compiler.ResolveSymbol("T") as TypeSymbol).SizeOfInstance; // TODO: declare a placeholder dependent on the parameter
+			switch(pass)
+			{
+				case CompilationStep.DeclareGlobalSymbols:
+					{
+						// declare type
+						TypeSymbol structType = new TypeSymbol(layout =>
+						{
+							// obtain value size of the stored type
+							int valueSize;
+							if(layout.fieldTypes[0] is TypeSymbol type)
+								valueSize = type.sizeOfValue;
+							else if(layout.fieldTypes[0] is PlaceholderSymbol placeholder && placeholder.Result is TypeSymbol placeholerResult)
+								valueSize = placeholerResult.sizeOfValue;
+							else
+								throw new LanguageException("Template parameter for Array<T> is not a type.");
 
-			// compute the alignment of the data buffer, must be a power of two, preferably >= instanceSize, must be <= CompilerSettings.MaxArrayAlignment
-			int offset = (int)CompilerSettings.ArrayLengthSize;
-			if(instanceSize > offset)
-				while(offset < instanceSize && offset < CompilerSettings.MaxArrayAlignment)
-					offset <<= 1;
+							// compute the alignment of the data buffer, must be a power of two, preferably >= instanceSize, must be <= CompilerSettings.MaxArrayAlignment
+							int offset = (int)CompilerSettings.ArrayLengthSize;
+							if(valueSize > offset)
+								while(offset < valueSize && offset < CompilerSettings.MaxArrayAlignment)
+									offset <<= 1;
 
-			// declare fields
-			compiler.DeclareConstant("count", "0", new ValueType(CompilerSettings.ArrayLengthSize));
-			compiler.DeclareConstant("data", offset.ToString());
+							return offset;
+						});
+						StructLayoutSymbol layout = structType.layoutPlaceholder;
+						compiler.DeclareType("Array", structType);
+						compiler.AddAnonymousPlaceholder(layout);
+
+						// declare fields
+						compiler.EnterGlobal("Array");
+						compiler.DeclareConstant("count", "0", CompilerSettings.ArrayLengthSize);
+						compiler.DeclarePlaceholder("data", _ => new ConstantSymbol(structType.SizeOfInstance.ToString()));
+						compiler.ExitGlobal();
+					}
+					break;
+				case CompilationStep.SolveGlobalSymbolDependencies:
+					{
+						// resolve parameter and declare dependency if needed
+						TypeSymbol structType = (TypeSymbol)compiler.ResolveSymbol("Array");
+						Symbol parameter = compiler.ResolveSymbol("T");
+						structType.layoutPlaceholder.fieldTypes = new Symbol[] { parameter };
+						if(parameter is PlaceholderSymbol)
+							compiler.DeclareDependency(parameter as PlaceholderSymbol, structType.layoutPlaceholder);
+
+						// declare dependency of the 'data' field of the struct layout
+						compiler.EnterGlobal("Array");
+						compiler.DeclareDependency(structType.layoutPlaceholder, (PlaceholderSymbol)compiler.ResolveSymbol("data"));
+						compiler.ExitGlobal();
+					}
+					break;
+			}
 		}
 	}
 }

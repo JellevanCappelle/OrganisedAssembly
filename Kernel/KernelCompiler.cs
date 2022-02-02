@@ -61,12 +61,12 @@ namespace OrganisedAssembly.Kernel
 						compiler.DeclareConstant("KernelVirtualBase", $"0x{virtualBase:x}");
 						compiler.DeclareConstant("EndOfKernelImage", "end_of_kernel");
 						compiler.ExitGlobal();
-
-						// declare common builtins
-						Builtins.GenerateBuiltinTypes(compiler);
 					}
-				}
-			};
+				},
+
+				// declare common builtins
+				Builtins.BuiltinTypes()
+		};
 
 			// add the actual source code
 			ParseAndConvertSource(program);

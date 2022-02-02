@@ -14,6 +14,8 @@ namespace OrganisedAssembly
 		{
 			if(sorted)
 				throw new InvalidOperationException("Attempted to add to an already sorted dependency graph.");
+			if(node == null)
+				throw new ArgumentNullException("null is not allowed as a node value");
 
 			// register as a node without inbound edges
 			if(!inboundEdges.ContainsKey(node))
@@ -24,6 +26,8 @@ namespace OrganisedAssembly
 		{
 			if(sorted)
 				throw new InvalidOperationException("Attempted to add to an already sorted dependency graph.");
+			if(source == null || destination == null)
+				throw new ArgumentNullException("null is not allowed as a node value");
 
 			// add inbound & outbound edges to the graph
 			if(!inboundEdges.ContainsKey(destination))

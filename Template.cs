@@ -110,6 +110,12 @@ namespace OrganisedAssembly
 				: new String[0];
 		}
 
+		public TemplateName(String name, params String[] parameterNames)
+		{
+			this.name = name;
+			this.parameterNames = parameterNames;
+		}
+
 		public override String ToString() => HasTemplateParams ? $"{name}<{String.Join(", ", parameterNames)}>" : name;
 	}
 

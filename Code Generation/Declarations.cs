@@ -60,7 +60,7 @@ namespace OrganisedAssembly
 					if(type.Defined)
 						compiler.DeclareConstant(name, GetLabelString(compiler, name), type);
 					else
-						placeholder = compiler.DeclarePlaceholder(name, (_) =>
+						placeholder = compiler.DeclarePlaceholder(name, _ =>
 						{
 							type.ResolveDependency();
 							return new ConstantSymbol(GetLabelString(compiler, name), type);
