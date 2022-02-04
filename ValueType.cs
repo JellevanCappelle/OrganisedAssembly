@@ -33,7 +33,7 @@ namespace OrganisedAssembly
 		public ValueType(JsonProperty sizeOrType)
 		{
 			if(sizeOrType.Name == "sizeOrType") // use the child node if the nonterminal isn't already a sizeSpecifier or typeName
-				sizeOrType = sizeOrType.GetChildNonterminal() ?? throw new LanguageException($"Malformed size specifier: {sizeOrType.Flatten()}");
+				sizeOrType = sizeOrType.GetChildNonterminal() ?? throw new LanguageException($"Malformed size or type specifier: {sizeOrType.Flatten()}");
 
 			if(sizeOrType.Name == "sizeSpecifier")
 			{
@@ -43,7 +43,7 @@ namespace OrganisedAssembly
 			else if(sizeOrType.Name == "identifierPath")
 				typeName = new UnresolvedPath(sizeOrType);
 			else
-				throw new LanguageException($"Unexpected sub-rule name in sizeOrType: {sizeOrType.Name}.");
+				throw new LanguageException($"Unexpected sub-rule name in sizeOrType: '{sizeOrType.Name}'.");
 		}
 
 		public static implicit operator ValueType(SizeSpecifier size) => new ValueType(size);

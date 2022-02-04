@@ -521,6 +521,116 @@ namespace OrganisedAssembly
 			program.AddLast((compiler, pass) => compiler.ExitGlobal());
 		}
 
+		protected LinkedList<CompilerAction> ConvertStructStatements(TemplateName structName, JsonProperty[] statements)
+		{
+			LinkedList<CompilerAction> code = new LinkedList<CompilerAction>();
+			LinkedList<CompilerAction> methods = new LinkedList<CompilerAction>();
+
+			// define a TypeSymbol for the struct
+			code.AddLast((compiler, pass) =>
+			{
+				if(pass == CompilationStep.DeclareGlobalSymbols)
+				{
+					TypeSymbol structType = new TypeSymbol(layout => layout.size);
+					compiler.DeclareType(structName.name, structType);
+					compiler.AddAnonymousPlaceholder(structType.layoutPlaceholder);
+				}
+
+				// enter the structs namesapce
+				compiler.EnterGlobal(structName.name);
+			});
+
+			// obtain a list of field types, handle all methods and constants
+			List<(ValueType type, String name)> fields = new List<(ValueType type, String name)>();
+			List<int> offsets = new List<int>();
+			int nextOffset = 0;
+			bool independent = true;
+			foreach(JsonProperty statement in statements)
+				if(statement.GetNonterminal("structMethod") is JsonProperty method)
+					ConvertStructMethod(method, methods);
+				else if(statement.GetNonterminal("constantDecl") is JsonProperty constant)
+					ConvertConstant(constant, code);
+				else if(statement.GetNonterminal("structField") is JsonProperty field)
+				{
+					field = field.GetChildNonterminal()
+							?? throw new LanguageException($"Encountered struct field declaration with no child non-terminal.");
+
+					// obtain field name and type
+					String name = field.GetNonterminal("name")?.Flatten()
+									?? throw new LanguageException($"Malformed struct field declaration: {field.Flatten()}");
+					ValueType type = field.Name == "structVariableDecl" // otherwise: arrayDecl
+						? new ValueType(field.GetNonterminal("sizeOrType")
+										?? throw new LanguageException($"Malformed struct field declaration: {field.Flatten()}"))
+						: new ValueType(int.Parse(field.GetNonterminal("expr")?.Flatten()
+										?? throw new LanguageException($"Malformed struct field declaration: {field.Flatten()}")));
+
+					// process as much of the structs layout as possible outside of a CompilerAction
+					fields.Add((type, name));
+					if(independent)
+						if(type.Defined)
+						{
+							offsets.Add(nextOffset);
+							nextOffset += type.Size;
+						}
+						else
+							independent = false;
+				}
+
+			// do all field and struct size declarations in one CompilerAction
+			code.AddLast((compiler, pass) =>
+			{
+				switch(pass)
+				{
+					case CompilationStep.DeclareGlobalSymbols:
+						{
+							// declare independent fields
+							for(int i = 0; i < offsets.Count; i++)
+								compiler.DeclareConstant(fields[i].name, offsets[i].ToString(), fields[i].type);
+
+							// declare dependent fields, store info in structs layout placeholder
+							StructLayoutSymbol layout = compiler.GetCurrentAssociatedType().layoutPlaceholder;
+							layout.size = nextOffset;
+							layout.fieldTypes = new ValueType[Math.Max(0, fields.Count - offsets.Count)];
+							layout.dependencies = new PlaceholderSymbol[layout.fieldTypes.Length];
+							for(int i = offsets.Count; i < fields.Count; i++)
+							{
+								int j = i - offsets.Count;
+								ValueType type = layout.fieldTypes[j] = new ValueType(fields[i].type); // deep copy the type
+								layout.dependencies[j] = compiler.DeclarePlaceholder(fields[i].name, _ =>
+								{
+									type.ResolveDependency();
+									ConstantSymbol result = new ConstantSymbol(layout.size.ToString(), type);
+									layout.size += type.Size; // increment the offset for the next dependent field
+									return result;
+								});
+							}
+						}
+						break;
+					case CompilationStep.SolveGlobalSymbolDependencies:
+						{
+							// construct the dependency graph
+							StructLayoutSymbol layout = compiler.GetCurrentAssociatedType().layoutPlaceholder;
+							for(int j = 0; j < layout.fieldTypes.Length; j++)
+							{
+								layout.fieldTypes[j].DeclareDependency(layout.dependencies[j], compiler); // each field depends on the associated type
+								if(j > 0) // each field depends on the previous one
+									compiler.DeclareDependency(layout.dependencies[j - 1], layout.dependencies[j]);
+							}
+							if(layout.dependencies.Length > 0) // the struct layout depends on the last field
+								compiler.DeclareDependency(layout.dependencies.Last(), layout);
+						}
+						break;
+				}
+			});
+
+			// always process methods after struct layout to prevent unnecessary dependencies
+			code.Concat(methods);
+
+			// exit the structs namesapce
+			code.AddLast((compiler, pass) => compiler.ExitGlobal());
+			return code;
+		}
+
 		void ConvertStruct(JsonProperty node, LinkedList<CompilerAction> program)
 		{
 			TemplateName structName = new TemplateName(node.GetNonterminal("templateName")
@@ -528,110 +638,9 @@ namespace OrganisedAssembly
 			JsonProperty[] statements = node.GetNonterminal("structBody")?.GetNonterminals("structStatement").ToArray()
 										?? throw new LanguageException("Struct declaration missing body.");
 
-			if(structName.HasTemplateParams)
-				throw new NotImplementedException(); // TODO
-
-			//define a TypeSymbol for the struct
-			int structSize = 0; // to be filled in later
-			PlaceholderSymbol structSizePlaceholder = null;
-			program.AddLast((compiler, pass) =>
-			{
-				if(pass == CompilationStep.DeclareGlobalSymbols)
-				{
-					TypeSymbol structType = new TypeSymbol(_ => structSize);
-					structSizePlaceholder = structType.layoutPlaceholder;
-					compiler.DeclareType(structName.name, structType);
-					compiler.AddAnonymousPlaceholder(structSizePlaceholder);
-				}
-			});
-
-			// enter the structs namesapce
-			program.AddLast((compiler, pass) => compiler.EnterGlobal(structName.name));
-
-			// define (placeholders for) all fields and define all constants
-			List<(ValueType type, String name)> fields = new List<(ValueType type, String name)>();
-			PlaceholderSymbol lastPlaceholder = null;
-			foreach(JsonProperty statement in statements)
-			{
-				JsonProperty? field = statement.GetNonterminal("structField");
-				if(field == null) continue;
-				field = field?.GetChildNonterminal()
-						?? throw new LanguageException($"Encountered struct field declaration with no child non-terminal.");
-
-				String fieldRule = field?.Name;
-				if(fieldRule == "constantDecl")
-					ConvertConstant((JsonProperty)field, program);
-				else
-				{
-					// determine the name and type of the field
-					String name;
-					ValueType type;
-					if(fieldRule == "structVariableDecl")
-					{
-						name = field?.GetNonterminal("name")?.Flatten()
-							   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}");
-						type = new ValueType(field?.GetNonterminal("sizeOrType")
-							   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}"));
-					}
-					else if(fieldRule == "arrayDecl")
-					{
-						name = field?.GetNonterminal("name")?.Flatten()
-							   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}");
-						type = new ValueType(int.Parse(field?.GetNonterminal("expr")?.Flatten() // TODO: write a proper expression-to-int method that works for compile-time constants
-							   ?? throw new LanguageException($"Malformed struct field declaration: {field?.Flatten()}")));
-					}
-					else
-						throw new LanguageException($"Unknown struct field rule: {fieldRule} in field {field?.Flatten()}.");
-
-					// declare the field. if it is dependent on a type or if a previous field was, declare it as placeholder (both dependent on the type and the previous placeholder field if applicable).
-					PlaceholderSymbol placeholder = null;
-					program.AddLast((compiler, pass) =>
-					{
-						if(pass == CompilationStep.DeclareGlobalSymbols)
-						{
-							if(lastPlaceholder == null && type.Defined)
-							{
-								compiler.DeclareConstant(name, structSize.ToString(), type);
-								structSize += type.Size;
-							}
-							else
-							{
-								placeholder = compiler.DeclarePlaceholder(name, _ =>
-								{
-									type.ResolveDependency();
-									Symbol result = new ConstantSymbol(structSize.ToString(), type);
-									structSize += type.Size;
-									return result;
-								});
-							}
-						}
-						else if(placeholder != null && pass == CompilationStep.SolveGlobalSymbolDependencies)
-						{
-							type.DeclareDependency(placeholder, compiler);
-							if(lastPlaceholder != null)
-							{
-								compiler.DeclareDependency(lastPlaceholder, placeholder);
-								lastPlaceholder = placeholder;
-							}
-						}
-					});
-				}
-			}
-
-			// declare that the struct size depends on the fields (if applicable)
-			program.AddLast((compiler, pass) =>
-			{
-				if(lastPlaceholder != null && pass == CompilationStep.SolveGlobalSymbolDependencies)
-					compiler.DeclareDependency(lastPlaceholder, structSizePlaceholder);
-			});
-
-			// handle all methods
-			foreach(JsonProperty statement in statements)
-				if(statement.GetNonterminal("structMethod") is JsonProperty method)
-					ConvertStructMethod(method, program);
-
-			// exit the structs namesapce
-			program.AddLast((compiler, pass) => compiler.ExitGlobal());
+			// construct a template for the struct
+			Template structTemplate = new Template(structName, () => ConvertStructStatements(structName, statements));
+			program.AddLast(structTemplate.Action);
 		}
 
 		void ConvertStructMethod(JsonProperty method, LinkedList<CompilerAction> program)

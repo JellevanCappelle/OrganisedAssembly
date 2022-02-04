@@ -36,10 +36,10 @@ namespace OrganisedAssembly
 						{
 							// obtain value size of the stored type
 							int valueSize;
-							if(layout.fieldTypes[0] is TypeSymbol type)
+							if(layout.dependencies == null)
+								valueSize = layout.size;
+							else if(layout.dependencies[0].Result is TypeSymbol type)
 								valueSize = type.sizeOfValue;
-							else if(layout.fieldTypes[0] is PlaceholderSymbol placeholder && placeholder.Result is TypeSymbol placeholerResult)
-								valueSize = placeholerResult.sizeOfValue;
 							else
 								throw new LanguageException("Template parameter for Array<T> is not a type.");
 
@@ -67,9 +67,13 @@ namespace OrganisedAssembly
 						// resolve parameter and declare dependency if needed
 						TypeSymbol structType = (TypeSymbol)compiler.ResolveSymbol("Array");
 						Symbol parameter = compiler.ResolveSymbol("T");
-						structType.layoutPlaceholder.fieldTypes = new Symbol[] { parameter };
-						if(parameter is PlaceholderSymbol)
-							compiler.DeclareDependency(parameter as PlaceholderSymbol, structType.layoutPlaceholder);
+						if(parameter is PlaceholderSymbol dependency)
+						{
+							structType.layoutPlaceholder.dependencies = new PlaceholderSymbol[] { dependency };
+							compiler.DeclareDependency(dependency, structType.layoutPlaceholder);
+						}
+						else if(parameter is TypeSymbol type)
+							structType.layoutPlaceholder.size = type.sizeOfValue;
 
 						// declare dependency of the 'data' field of the struct layout
 						compiler.EnterGlobal("Array");

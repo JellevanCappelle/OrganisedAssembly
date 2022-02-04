@@ -155,11 +155,11 @@ def function(): return functionDeclaration, Optional(emptySpace), localBody, Opt
 
 # structs
 def structVariableDecl(): return sizeOrType, '[', name, ']'
-def structField(): return [structVariableDecl, constantDecl, arrayDecl]
+def structField(): return [structVariableDecl, arrayDecl] # TODO: move constantDecl outside of structField
 def staticKeyword(): return "static"
 def structMethodDecl(): return Optional(staticKeyword), "method", templateName, '(', Optional(parameterList), ')'
 def structMethod(): return structMethodDecl, Optional(emptySpace), localBody, Optional(comment)
-def structStatement(): return Optional([structField, structMethod]), Optional(comment)
+def structStatement(): return Optional([constantDecl, structField, structMethod]), Optional(comment)
 def structBody(): return '{', structStatement, ZeroOrMore('\n', structStatement), '}'
 def struct(): return "struct", templateName, Optional(emptySpace), structBody, Optional(comment)
 def regPointerCast(): return '(', gpRegister, "as", identifierPath, ')'

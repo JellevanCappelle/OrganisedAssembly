@@ -139,7 +139,9 @@ namespace OrganisedAssembly
 
 	class StructLayoutSymbol : PlaceholderSymbol
 	{
-		public Symbol[] fieldTypes;
+		public int size = 0;
+		public PlaceholderSymbol[] dependencies = null;
+		public ValueType[] fieldTypes = null;
 
 		public StructLayoutSymbol(Action<StructLayoutSymbol> action) : base(x =>
 		{

@@ -27,12 +27,12 @@ namespace OrganisedAssembly
 
 			public void Append(String line) => backlog.AddLast(line);
 
-			public void Merge(BackLogItem next) // TODO: this should be O(1)!!!
+			public void Merge(BackLogItem next)
 			{
 				String result = next.line.ToString();
-				if(result != null) backlog.AddLast(result);
-				foreach(String s in next.backlog)
-					backlog.AddLast(s);
+				if(result != null)
+					backlog.AddLast(result);
+				backlog.Concat(next.backlog);
 			}
 
 			public void Write(TextWriter target)
