@@ -7,12 +7,13 @@ namespace OrganisedAssembly
 	{
 		protected SizeSpecifier sizeSpec = SizeSpecifier.NONE;
 		protected int size = 0;
-		protected UnresolvedPath typeName = null;
-		protected PlaceholderSymbol dependency = null;
-		protected TypeSymbol type;
+		protected TemplateParameter typeParam = null;
+		protected TypeSymbol type = null;
+		protected Placeholder dependency = null;
 		protected bool defined = false;
 
 		public bool Defined => defined;
+		public bool DefinedOrDependent => defined || dependency != null;
 		public bool WellDefined => defined && sizeSpec != SizeSpecifier.NONE;
 		public int Size => defined ? size : throw new InvalidOperationException("Value type undefined.");
 		public SizeSpecifier SizeSpec => defined ? sizeSpec : throw new InvalidOperationException("Value type undefined.");
@@ -22,8 +23,7 @@ namespace OrganisedAssembly
 		{
 			sizeSpec = original.sizeSpec;
 			size = original.size;
-			typeName = original.typeName;
-			dependency = original.dependency;
+			typeParam = original.typeParam;
 			type = original.type;
 			defined = original.defined;
 		}
@@ -35,15 +35,7 @@ namespace OrganisedAssembly
 			if(sizeOrType.Name == "sizeOrType") // use the child node if the nonterminal isn't already a sizeSpecifier or typeName
 				sizeOrType = sizeOrType.GetChildNonterminal() ?? throw new LanguageException($"Malformed size or type specifier: {sizeOrType.Flatten()}");
 
-			if(sizeOrType.Name == "sizeSpecifier")
-			{
-				size = (int)(sizeSpec = BaseConverter.ParseSize(sizeOrType.Flatten()));
-				defined = true;
-			}
-			else if(sizeOrType.Name == "identifierPath")
-				typeName = new UnresolvedPath(sizeOrType);
-			else
-				throw new LanguageException($"Unexpected sub-rule name in sizeOrType: '{sizeOrType.Name}'.");
+			typeParam = TemplateParameter.Parse(sizeOrType);
 		}
 
 		public static implicit operator ValueType(SizeSpecifier size) => new ValueType(size);
@@ -59,20 +51,22 @@ namespace OrganisedAssembly
 			defined = true;
 		}
 
-		public void DeclareDependency(PlaceholderSymbol dependent, ICompiler compiler)
+		public void DeclareDependency(Placeholder dependent, ICompiler compiler)
 		{
-			if(typeName != null)
+			if(typeParam != null && !defined)
 			{
-				Symbol type = compiler.ResolveSymbol(typeName);
-				if(type is TypeSymbol)
-					Solve((TypeSymbol)type);
-				else if(type is PlaceholderSymbol)
+				if(dependency == null)
 				{
-					dependency = (PlaceholderSymbol)type;
-					compiler.DeclareDependency(dependency, dependent);
+					Symbol symbol = typeParam.ToSymbol(compiler);
+					if(symbol is TypeSymbol type)
+						Solve(type);
+					else if(symbol is Placeholder dependency)
+						this.dependency = dependency;
+					else
+						throw new LanguageException($"Not a type: {typeParam}.");
 				}
-				else
-					throw new LanguageException($"Not a type: {typeName}.");
+				else if(!defined)
+					compiler.DeclareDependency(dependency, dependent);
 			}
 		}
 
@@ -80,11 +74,11 @@ namespace OrganisedAssembly
 		{
 			if(dependency != null)
 			{
-				Symbol type = dependency.Result;
-				if(type is TypeSymbol)
-					Solve((TypeSymbol)type);
+				Symbol symbol = dependency.Result;
+				if(symbol is TypeSymbol type)
+					Solve(type);
 				else
-					throw new LanguageException($"Not a type: {typeName}.");
+					throw new LanguageException($"Not a type: {typeParam}.");
 			}
 		}
 
@@ -93,24 +87,24 @@ namespace OrganisedAssembly
 		{
 			if(!compiler.IsLocal || compiler.CurrentPass != CompilationStep.GenerateCode)
 				throw new InvalidOperationException("Solve() can only be called in a local scope during code generation.");
-			if(typeName == null)
+			if(typeParam == null)
 				return;
 
-			Symbol type = compiler.ResolveSymbol(typeName.Resolve(compiler));
+			Symbol type = typeParam.ToSymbol(compiler);
 			if(type is TypeSymbol)
 				Solve((TypeSymbol)type);
 			else
-				throw new LanguageException($"Not a type: {typeName}.");
+				throw new LanguageException($"Not a type: {typeParam}.");
 		}
 
 		protected void Solve(TypeSymbol type)
 		{
 			if(defined)
-				throw new InvalidOperationException($"Attempted to resolve the same type '{typeName}' twice.");
+				throw new InvalidOperationException($"Attempted to resolve the same type '{typeParam}' twice.");
 
 			this.type = type;
 			sizeSpec = type.Size;
-			size = type.sizeOfValue;
+			size = type.SizeOf;
 			defined = true;
 		}
 	}

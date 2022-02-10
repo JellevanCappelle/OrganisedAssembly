@@ -46,7 +46,8 @@ for suf in conditionSuffixes:
 sizeKeywords = ["byte", "word", "dword", "qword"]
 stringSizeKeywords = [kwd + 's' for kwd in sizeKeywords]
 
-nonIdentifiers = instructionKeyword + ifKeywords + forKeywords + whileKeywords + sizeKeywords + stringSizeKeywords + ["constant", "string", "cstring", "function", "method", "using", "namespace", "ref", "enum", "struct", "sizeof", "alias", "binary"]
+miscKeywords = ["constant", "string", "cstring", "function", "method", "using", "namespace", "ref", "enum", "struct", "sizeof", "alias", "binary", "ref", "value"]
+nonIdentifiers = instructionKeyword + ifKeywords + forKeywords + whileKeywords + sizeKeywords + stringSizeKeywords + miscKeywords
 
 
 # define language rules
@@ -69,10 +70,11 @@ def number(): return [hexadecimal, binary, decimal, singleQuotedString]
 # identifier
 def name(): return Not(nonIdentifiers), regex('[a-zA-Z_][a-zA-Z0-9_]*')
 def namePath(): return name, ZeroOrMore('.', name)
-def templateParameters(): return '<', identifierPath, ZeroOrMore(',', identifierPath), '>'
-def templateDeclarationParameters(): return '<', name, ZeroOrMore(',', name), '>' # TODO: allow syntax for specifying parameter types
-def templateName(): return name, Optional(templateDeclarationParameters)
-def identifier(): return name, Optional(templateParameters)
+def templateParam(): return sizeOrType() # anything that is a sizeOrType can also be a template parameter, but more options might be added later
+def templateParamList(): return '<', templateParam, ZeroOrMore(',', templateParam), '>'
+def templateDeclParamList(): return '<', name, ZeroOrMore(',', name), '>' # TODO: allow syntax for specifying parameter types
+def templateName(): return name, Optional(templateDeclParamList)
+def identifier(): return name, Optional(templateParamList)
 def identifierPath(): return identifier, ZeroOrMore('.', identifier)
 
 # expression # TODO: differentiate between expressions that can or can't contain registers (i.e. effective addresses or immediates)
@@ -112,7 +114,9 @@ def statement(): return Optional(label), Optional([instruction, sseInstruction, 
 def emptyStatement(): return Optional(comment)
 
 # variables and constants
-def sizeOrType(): return [sizeSpecifier, identifierPath]
+def refType(): return "ref", '<', sizeOrType, '>'
+def valueType(): return "value", '<', sizeOrType, '>'
+def sizeOrType(): return [sizeSpecifier, identifierPath, refType, valueType]
 def exprList(): return expr, ZeroOrMore(',', expr)
 def varAssignment(): return '=', expr
 def variableDecl(): return sizeOrType, '[', name, ']', Optional(varAssignment)
@@ -155,7 +159,7 @@ def function(): return functionDeclaration, Optional(emptySpace), localBody, Opt
 
 # structs
 def structVariableDecl(): return sizeOrType, '[', name, ']'
-def structField(): return [structVariableDecl, arrayDecl] # TODO: move constantDecl outside of structField
+def structField(): return [structVariableDecl, arrayDecl]
 def staticKeyword(): return "static"
 def structMethodDecl(): return Optional(staticKeyword), "method", templateName, '(', Optional(parameterList), ')'
 def structMethod(): return structMethodDecl, Optional(emptySpace), localBody, Optional(comment)

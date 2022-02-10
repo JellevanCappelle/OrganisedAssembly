@@ -16,7 +16,7 @@ namespace OrganisedAssembly
 
 		public void AddLineInfo(String file, int line, int column)
 		{
-			if(this.file == null)
+			if(this.file == null && file != null)
 				this.file = file;
 			if(!lineInfoSet)
 			{

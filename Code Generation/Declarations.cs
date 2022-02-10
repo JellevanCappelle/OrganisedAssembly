@@ -50,7 +50,7 @@ namespace OrganisedAssembly
 							 ?? throw new LanguageException($"Encountered malformed declaration: {declaration.Flatten()}."));
 			JsonProperty? value = declaration.GetNonterminal("varAssignment")?.GetNonterminal("expr");
 
-			PlaceholderSymbol placeholder = null;
+			Placeholder placeholder = null;
 			program.AddLast((compiler, pass) =>
 			{
 				if(!compiler.IsLocal && value == null)

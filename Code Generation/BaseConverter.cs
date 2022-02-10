@@ -53,7 +53,7 @@ namespace OrganisedAssembly
 			return "L" + compiler.GetUID() + "_" + String.Join<Identifier>('_', compiler.GetCurrentPath()) + "_" + name;
 		}
 
-		public static SizeSpecifier ParseSize(String str)
+		public static SizeSpecifier ParseSize(String str) // TODO: put this in a more logical place
 		{
 			if(!sizeLookup.ContainsKey(str))
 				throw new LanguageException($"Bad size specifier: '{str}'.");
@@ -166,10 +166,10 @@ namespace OrganisedAssembly
 								  ?? throw new LanguageException($"Malformed sizeof operator: '{sizeOf.Flatten()}'"));
 
 			Symbol type = compiler.ResolveSymbol(path);
-			if(type is TypeSymbol)
-				return (type as TypeSymbol).SizeOfInstance;
+			if(type is ReferenceType reference) // TODO: should work with any TypeSymbol! requires ref<T> and value<T> syntax...
+				return reference.dereferenced.SizeOf;
 			else
-				throw new LanguageException($"'{path}' is not a type.");
+				throw new LanguageException($"'{path}' is not a reference-type.");
 		}
 
 		/// <summary>
@@ -531,9 +531,9 @@ namespace OrganisedAssembly
 			{
 				if(pass == CompilationStep.DeclareGlobalSymbols)
 				{
-					TypeSymbol structType = new TypeSymbol(layout => layout.size);
-					compiler.DeclareType(structName.name, structType);
-					compiler.AddAnonymousPlaceholder(structType.layoutPlaceholder);
+					ReferenceType refType = new ReferenceType(layout => layout.size);
+					compiler.DeclareType(structName.name, refType);
+					compiler.AddAnonymousPlaceholder(refType.Struct.layoutPlaceholder);
 				}
 
 				// enter the structs namesapce
@@ -588,10 +588,10 @@ namespace OrganisedAssembly
 								compiler.DeclareConstant(fields[i].name, offsets[i].ToString(), fields[i].type);
 
 							// declare dependent fields, store info in structs layout placeholder
-							StructLayoutSymbol layout = compiler.GetCurrentAssociatedType().layoutPlaceholder;
+							StructLayoutSymbol layout = ((ReferenceType)compiler.GetCurrentAssociatedType()).Struct.layoutPlaceholder;
 							layout.size = nextOffset;
 							layout.fieldTypes = new ValueType[Math.Max(0, fields.Count - offsets.Count)];
-							layout.dependencies = new PlaceholderSymbol[layout.fieldTypes.Length];
+							layout.dependencies = new Placeholder[layout.fieldTypes.Length];
 							for(int i = offsets.Count; i < fields.Count; i++)
 							{
 								int j = i - offsets.Count;
@@ -609,7 +609,7 @@ namespace OrganisedAssembly
 					case CompilationStep.SolveGlobalSymbolDependencies:
 						{
 							// construct the dependency graph
-							StructLayoutSymbol layout = compiler.GetCurrentAssociatedType().layoutPlaceholder;
+							StructLayoutSymbol layout = ((ReferenceType)compiler.GetCurrentAssociatedType()).Struct.layoutPlaceholder;
 							for(int j = 0; j < layout.fieldTypes.Length; j++)
 							{
 								layout.fieldTypes[j].DeclareDependency(layout.dependencies[j], compiler); // each field depends on the associated type

@@ -105,7 +105,7 @@ namespace OrganisedAssembly
 		{
 			this.name = name.GetNonterminal("name")?.Flatten()
 						?? throw new LanguageException($"Malformed template name '{name.Flatten()}'.");
-			parameterNames = name.GetNonterminal("templateDeclarationParameters") is JsonProperty parameters
+			parameterNames = name.GetNonterminal("templateDeclParamList") is JsonProperty parameters
 				? (from param in parameters.GetNonterminals("name") select param.Flatten()).ToArray()
 				: new String[0];
 		}

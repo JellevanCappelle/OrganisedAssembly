@@ -3,20 +3,6 @@ using System.Collections.Generic;
 
 namespace OrganisedAssembly
 {
-	enum SizeSpecifier
-	{
-		/// <summary>
-		/// Used for constants, which don't represent a variable in memory and therefore don't have a size.
-		/// </summary>
-		NONE = 0,
-
-		// regular size specifiers
-		BYTE = 1,
-		WORD = 2,
-		DWORD = 4,
-		QWORD = 8
-	}
-
 	interface Scope
 	{
 		Identifier Name { get; }

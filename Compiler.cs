@@ -15,7 +15,7 @@ namespace OrganisedAssembly
 
 	partial class Compiler : ICompiler
 	{
-		public String CurrentFile => fileStack.Peek().file;
+		public String CurrentFile => fileStack.Count > 0 ? fileStack.Peek().file : null;
 		public CompilationStep CurrentPass => currentPass;
 		public bool IsLocal => CurrentScope is LocalScope;
 		public bool IsAnonymous => CurrentScope.IsAnonymous;
@@ -54,7 +54,7 @@ namespace OrganisedAssembly
 					// create a new TopologicalSort if necessary
 					if(currentPass == CompilationStep.DeclareGlobalSymbols)
 						if(placeholdersOwner = placeholders.Value == null)
-							placeholders.Value = new TopologicalSort<PlaceholderSymbol>();
+							placeholders.Value = new TopologicalSort<Placeholder>();
 
 					// run through each compiler action in the program
 					foreach(CompilerAction action in program)
@@ -63,7 +63,7 @@ namespace OrganisedAssembly
 					// resolve placeholders during the right pass, only if this is the owner of the TopologicalSort object
 					if(placeholdersOwner && currentPass == CompilationStep.SolveGlobalSymbolDependencies)
 					{
-						foreach(PlaceholderSymbol placeholder in placeholders.Value.Sort())
+						foreach(Placeholder placeholder in placeholders.Value.Sort())
 							placeholder.Resolve();
 						placeholders.Value = null;
 					}
@@ -223,40 +223,40 @@ namespace OrganisedAssembly
 			Global.Declare(name, new FunctionSymbol(label, metadata), new LocalScope(name));
 		}
 
-		public PlaceholderSymbol DeclarePlaceholder(Identifier name, Func<PlaceholderSymbol, Symbol> resolve)
+		public Placeholder DeclarePlaceholder(Identifier name, Func<Placeholder, Symbol> resolve)
 		{
 			if(IsLocal)
 				throw new InvalidOperationException("Attempted to declare a placeholder symbol in a local scope.");
 			if(currentPass != CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to declare a placeholder symbol during pass {currentPass}.");
 
-			PlaceholderSymbol placeholder = new PlaceholderSymbol(name, Global, resolve);
+			Placeholder placeholder = new Placeholder(name, Global, resolve);
 			placeholders.Value.AddNode(placeholder);
 			Global.DeclareSymbol(placeholder.Name, placeholder);
 			return placeholder;
 		}
 
-		public FunctionPlaceholderSymbol DeclareFunctionPlaceholder(Identifier name, (ValueType, String)[] parameters, Func<PlaceholderSymbol, FunctionSymbol> resolve)
+		public FunctionPlaceholder DeclareFunctionPlaceholder(Identifier name, (ValueType, String)[] parameters, Func<Placeholder, FunctionSymbol> resolve)
 		{
 			if(IsLocal)
 				throw new InvalidOperationException("Attempted to declare a function placeholder symbol in a local scope.");
 			if(currentPass != CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to declare a function placeholder symbol during pass {currentPass}.");
 
-			FunctionPlaceholderSymbol placeholder = new FunctionPlaceholderSymbol(name, parameters, Global, resolve);
+			FunctionPlaceholder placeholder = new FunctionPlaceholder(name, parameters, Global, resolve);
 			placeholders.Value.AddNode(placeholder);
 			Global.Declare(placeholder.Name, placeholder, new LocalScope(name));
 			return placeholder;
 		}
 
-		public void AddAnonymousPlaceholder(PlaceholderSymbol placeholder)
+		public void AddAnonymousPlaceholder(Placeholder placeholder)
 		{
 			if(currentPass != CompilationStep.DeclareGlobalSymbols)
 				throw new InvalidOperationException($"Attempted to declare a placeholder symbol during pass {currentPass}.");
 			placeholders.Value.AddNode(placeholder);
 		}
 
-		public void DeclareDependency(PlaceholderSymbol dependency, PlaceholderSymbol dependent)
+		public void DeclareDependency(Placeholder dependency, Placeholder dependent)
 		{
 			if(currentPass != CompilationStep.SolveGlobalSymbolDependencies)
 				throw new InvalidOperationException($"Attempted to declare a symbol dependency during pass {currentPass}.");
@@ -272,7 +272,7 @@ namespace OrganisedAssembly
 
 			GlobalScope scope = new GlobalScope(name, Global, type);
 			Global.Declare(name, type, scope);
-			type.InitMemberScope(scope);
+			type.MemberScope = scope;
 		}
 
 		public void DeclareTemplate(Identifier name, Template template)

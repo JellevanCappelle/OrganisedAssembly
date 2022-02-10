@@ -198,9 +198,9 @@ namespace OrganisedAssembly.Win64
 					else
 					{
 						// declare a function placeholder symbol if the function has parameters
-						FunctionPlaceholderSymbol placeholder = compiler.DeclareFunctionPlaceholder(name, parameters, (placeholder) =>
+						FunctionPlaceholder placeholder = compiler.DeclareFunctionPlaceholder(name, parameters, (placeholder) =>
 						{
-							(ValueType type, String name)[] parameters = (placeholder as FunctionPlaceholderSymbol)?.parameters
+							(ValueType type, String name)[] parameters = (placeholder as FunctionPlaceholder)?.parameters
 																		 ?? throw new InvalidOperationException($"Encountered wrong placeholder symbol type for function '{name}'.");
 							foreach((ValueType type, String name) in parameters)
 								type.ResolveDependency();
@@ -214,7 +214,7 @@ namespace OrganisedAssembly.Win64
 				else if(pass == CompilationStep.SolveGlobalSymbolDependencies)
 				{
 					// declare dependencies if the function has parameters
-					if(compiler.ResolveSymbol(name) is FunctionPlaceholderSymbol placeholder)
+					if(compiler.ResolveSymbol(name) is FunctionPlaceholder placeholder)
 						foreach((ValueType type, String name) in placeholder.parameters)
 							type.DeclareDependency(placeholder, compiler);
 

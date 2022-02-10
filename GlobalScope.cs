@@ -71,7 +71,8 @@ namespace OrganisedAssembly
 			members[scope.Name.name] = new SymbolAndOrScope(scope);
 		}
 
-		internal GlobalScope GetSubScope(params Identifier[] path) => path.Length == 1
+		internal GlobalScope GetSubScope(params Identifier[] path)
+			=> path.Length == 1
 				? this[path[0]]?.scope as GlobalScope
 				: (this[path[0]]?.scope as GlobalScope)?.GetSubScope(path[1..]);
 
@@ -119,7 +120,7 @@ namespace OrganisedAssembly
 				throw new InvalidOperationException("Attempted to replace a placeholder symbol using a name with template arguments.");
 			if(!members.ContainsKey(name.name))
 				throw new InvalidOperationException($"Attempted to replace a non-existent placeholder {name} in {AbsoluteName}.");
-			if(!(members[name.name].symbol is PlaceholderSymbol))
+			if(!(members[name.name].symbol is Placeholder))
 				throw new InvalidOperationException($"Attempted to replace a non-placeholder symbol {name} in {AbsoluteName}.");
 			members[name.name] = new SymbolAndOrScope(symbol, members[name.name].scope);
 		}

@@ -14,7 +14,7 @@ namespace OrganisedAssembly
 		protected readonly Stack<Scope> scopeStack = new Stack<Scope>();
 		protected readonly Stack<(String file, List<Scope> usings)> fileStack = new Stack<(String, List<Scope>)>(); // stack is deep-copied, contained lists are not
 		protected readonly GlobalScope rootScope;
-		protected readonly SharedReference<TopologicalSort<PlaceholderSymbol>> placeholders = new SharedReference<TopologicalSort<PlaceholderSymbol>>(); // captured without deep-copy
+		protected readonly SharedReference<TopologicalSort<Placeholder>> placeholders = new SharedReference<TopologicalSort<Placeholder>>(); // captured without deep-copy
 
 		// non-captured state
 		protected readonly bool verbose = false;
@@ -45,7 +45,7 @@ namespace OrganisedAssembly
 			public readonly Scope[] scopeStack;
 			public readonly (String, List<Scope>)[] fileStack;
 			public readonly GlobalScope rootScope;
-			public readonly SharedReference<TopologicalSort<PlaceholderSymbol>> placeholders;
+			public readonly SharedReference<TopologicalSort<Placeholder>> placeholders;
 
 			public CompilerState(Compiler compiler)
 			{
