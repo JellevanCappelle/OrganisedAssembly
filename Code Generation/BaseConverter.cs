@@ -162,14 +162,14 @@ namespace OrganisedAssembly
 
 		protected int SizeOf(JsonProperty sizeOf, ICompiler compiler)
 		{
-			UnresolvedPath path = new UnresolvedPath(sizeOf.GetNonterminal("identifierPath")
-								  ?? throw new LanguageException($"Malformed sizeof operator: '{sizeOf.Flatten()}'"));
+			TemplateParameter param = TemplateParameter.Parse(sizeOf.GetNonterminal("templateParam")
+									  ?? throw new LanguageException($"Malformed sizeof operator: '{sizeOf.Flatten()}'"));
 
-			Symbol type = compiler.ResolveSymbol(path);
-			if(type is ReferenceType reference) // TODO: should work with any TypeSymbol! requires ref<T> and value<T> syntax...
-				return reference.dereferenced.SizeOf;
+			Symbol sym = param.ToSymbol(compiler);
+			if(sym is TypeSymbol type)
+				return type.SizeOf;
 			else
-				throw new LanguageException($"'{path}' is not a reference-type.");
+				throw new LanguageException($"'{param}' is not a type.");
 		}
 
 		/// <summary>

@@ -78,7 +78,7 @@ def identifier(): return name, Optional(templateParamList)
 def identifierPath(): return identifier, ZeroOrMore('.', identifier)
 
 # expression # TODO: differentiate between expressions that can or can't contain registers (i.e. effective addresses or immediates)
-def sizeof(): return "sizeof", '(', identifierPath, ')'
+def sizeof(): return "sizeof", '<', templateParam, '>'
 def exprValue(): return [number, register, sizeof, identifierPath]
 def binaryOperator(): return ['+', '-', '*', '/', '^', '&', '|', '<<', '>>']
 def unaryOperator(): return ['-', '~']
