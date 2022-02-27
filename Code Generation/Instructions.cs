@@ -71,7 +71,7 @@ namespace OrganisedAssembly
 			operand = operand.GetChildNonterminal() ?? throw new LanguageException("Encountered empty operand.");
 
 			if(operand.Name == "register")
-				return (new Operand(operand.Flatten()).size, SizePriority.Register);
+				return (new Register(operand.Flatten()).size, SizePriority.Register);
 			else if(operand.Name == "memReference")
 			{
 				if(operand.GetNonterminal("sizeSpecifier") is JsonProperty size)

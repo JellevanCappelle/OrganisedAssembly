@@ -78,14 +78,14 @@ namespace OrganisedAssembly
 
 	class AliasSymbol : Symbol
 	{
-		protected Operand register;
-		public Operand Register => register;
+		protected Register register;
+		public Register Register => register;
 		public override String Nasm => register.registerName;
 		public override SizeSpecifier Size => register.size;
 
-		public AliasSymbol(String register) => this.register = new Operand(register);
+		public AliasSymbol(String register) => this.register = new Register(register);
 
-		public void Assign(String register) => this.register = new Operand(register);
+		public void Assign(String register) => this.register = new Register(register);
 	}
 
 	class FunctionSymbol : ConstantSymbol

@@ -1,46 +1,52 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 
 namespace OrganisedAssembly.Win64
 {
 	class Win64Converter : BaseConverter
 	{
-		private String[] parameterRegisters = new String[] { "rcx", "rdx", "r8", "r9" };
+		private BaseRegister[] parameterRegisters = new BaseRegister[] { BaseRegister.RCX, BaseRegister.RDX, BaseRegister.R8, BaseRegister.R9 };
 		private String[] parameterRegistersW = new String[] { "cx", "dx", "r8w", "r9w" };
 
-		private void GenerateShuffle(List<(Operand src, Operand dst)> moves, ICompiler compiler)
+		private void GenerateShuffle(List<(Register src, Register dst)> moves, ICompiler compiler)
 		{
 			while(moves.Count != 0)
 			{
-				int i = moves.FindIndex(x => !moves.Exists(y => y.src.operand == x.dst.operand));
+				int i = moves.FindIndex(x => !moves.Exists(y => y.src.OperandEquals(x.dst)));
 				if(i != -1)
 				{
-					(Operand source, Operand dest) = moves[i];
+					(Register source, Register dest) = moves[i];
 					moves.RemoveAt(i);
 					compiler.Generate("mov" + dest.NasmRep + "," + source.NasmRep, "program");
 				}
 				else
 				{
-					(Operand source, Operand dest) = moves[0];
+					(Register source, Register dest) = moves[0];
 					moves.RemoveAt(0);
-					if(source.operand == dest.operand) // trivial moves are cycles too!
+					if(source.OperandEquals(dest)) // trivial moves are cycles too!
 						continue;
 
 					// because only cycles are left in the move graph now, there is exactly one move that needs to be updated
-					i = moves.FindIndex(x => x.src.operand == dest.operand);
+					i = moves.FindIndex(x => x.src.OperandEquals(dest));
 					if(moves[i].src.size > source.size) // make sure no values are split up
 					{
-						source = source.Resize(moves[i].src.size);
-						dest = dest.Resize(moves[i].src.size);
+						source = new Register(source.baseRegister, moves[i].src.size);
+						dest = new Register(dest.baseRegister, moves[i].src.size);
 					}
-					moves[i] = (source.Resize(moves[i].src.size), moves[i].dst);
+					moves[i] = (new Register(source.baseRegister, moves[i].src.size), moves[i].dst);
 
 					compiler.Generate("xchg" + dest.NasmRep + "," + source.NasmRep, "program");
 				}
 			}
 		}
+
+		// TODO: new GenerateShuffle() function
+		// 1. determine per move which registers are used as source (either directly or in a memory reference)
+		// 2. topologically sort moves such that a move that modifies a register is dependent on all moves that use that register as a source
+		// 3. throw an exception if there's a cycle, that's a problem to be solved later
+		// 4. execute all moves in topological order
+		// TODO: use this new function to also implement 'params Array<T>' style arguments
 
 		/// <summary>
 		/// Generates a function call according to the Win64 ABI.
@@ -70,53 +76,52 @@ namespace OrganisedAssembly.Win64
 
 			// register/immediate-to-stack
 			for(int i = 4; i < arguments.Length; i++)
-				if(arguments[i].type == OperandType.Register || arguments[i].type == OperandType.Immediate)
-					lines.Add($"mov {arguments[i].Size} [rsp + {i * 8}], {arguments[i].NasmRep}");
+				if(arguments[i] is Register || arguments[i] is Immediate)
+					lines.Add($"mov {arguments[i].size} [rsp + {i * 8}], {arguments[i].NasmRep}");
 
 			// register-to-register
-			List<(Operand src, Operand dst)> moves = new List<(Operand src, Operand dst)>();
+			List<(Register src, Register dst)> moves = new List<(Register src, Register dst)>();
 			for(int i = 0; i < 4 && i < arguments.Length; i++)
-				if(arguments[i].type == OperandType.Register)
+				if(arguments[i] is Register arg)
 				{
-					Operand source = arguments[i].size == SizeSpecifier.BYTE ? new Operand(arguments[i], SizeSpecifier.WORD) : arguments[i];
-					Operand dest = new Operand(source.size, parameterRegisters[i], OperandType.Register);
+					Register source = arg.size == SizeSpecifier.BYTE ? new Register(arg.baseRegister, SizeSpecifier.WORD) : arg;
+					Register dest = new Register(parameterRegisters[i], source.size);
 					moves.Add((source, dest));
 				}
 			GenerateShuffle(moves, compiler);
 
 			// handle edge-cases in byte arguments
 			for(int i = 0; i < 4 && i < arguments.Length; i++)
-				if(arguments[i].type == OperandType.Register && arguments[i].size == SizeSpecifier.BYTE)
-				{
-					String reg = arguments[i].registerName;
-					if(reg.EndsWith('h'))
+				if(arguments[i] is Register arg && arg.size == SizeSpecifier.BYTE)
+					if(arg.registerName.EndsWith('h'))
 						lines.Add($"shr {parameterRegistersW[i]}, 8");
-				}
 
 			// memory/reference/immediate-to-register (TODO: anything non-stack has potentially been trashed in the preceding steps, detect this and throw exception)
 			for(int i = 0; i < 4 && i < arguments.Length; i++)
-				if(arguments[i].type != OperandType.Register)
-					if(arguments[i].type == OperandType.Reference) // can be 'lea'-ed directly into the target register
-						lines.Add($"lea {parameterRegisters[i]}," + arguments[i].operand);
+				if(arguments[i] is not Register)
+					if(arguments[i] is MemoryAddress arg && !arg.isAccess) // can be 'lea'-ed directly into the target register
+						lines.Add($"lea {parameterRegisters[i]}, [" + arg.address + "]");
 					else
 					{
-						Operand dest = new Operand(arguments[i].size, parameterRegisters[i], OperandType.Register, upgradeByteRegisters: true);
+						SizeSpecifier size = (i >= 2 && arguments[i].size == SizeSpecifier.BYTE) ? SizeSpecifier.WORD : arguments[i].size;
+						Register dest = new Register(parameterRegisters[i], size);
 						lines.Add($"mov {dest.NasmRep}," + arguments[i].Resize(dest.size).NasmRep); // TODO: throw error if the destination register size is upgraded but the argument is too large for the original size
 					}
 
 			// memory-to-stack: use rax as scratch register since it is volatile under Win64
 			for(int i = 4; i < arguments.Length; i++)
-				if(arguments[i].type == OperandType.Memory)
-				{
-					Operand rax = new Operand(arguments[i].size, "rax", OperandType.Register);
-					lines.Add($"mov {rax.NasmRep}," + arguments[i].NasmRep);
-					lines.Add($"mov [rsp + {i * 8}], {rax.NasmRep}");
-				}
-				else if(arguments[i].type == OperandType.Reference)
-				{
-					lines.Add($"lea rax," + arguments[i].operand);
-					lines.Add($"mov [rsp + {i * 8}], rax");
-				}
+				if(arguments[i] is MemoryAddress arg)
+					if(arg.isAccess)
+					{
+						Register rax = new Register(BaseRegister.RAX, arguments[i].size);
+						lines.Add($"mov {rax.NasmRep}," + arguments[i].NasmRep);
+						lines.Add($"mov [rsp + {i * 8}], {rax.NasmRep}");
+					}
+					else
+					{
+						lines.Add("lea rax, [" + arg.address + "]");
+						lines.Add($"mov [rsp + {i * 8}], rax");
+					}
 
 			foreach(SymbolString line in lines)
 				compiler.Generate(line, "program");
@@ -128,11 +133,11 @@ namespace OrganisedAssembly.Win64
 
 			// move the return value to the right place (if applicable)
 			if(returnTarget != null)
-				if(returnTarget.NasmRep == "ah")
+				if(returnTarget is Register reg1 && reg1.registerName == "ah")
 					compiler.Generate("shl ax, 8", "program");
-				else if(returnTarget.operand != "rax")
+				else if(!(returnTarget is Register reg2 && reg2.baseRegister == BaseRegister.RAX))
 				{
-					Operand rax = new Operand(returnTarget.size, "rax", OperandType.Register);
+					Register rax = new Register(BaseRegister.RAX, returnTarget.size);
 					compiler.Generate("mov" + returnTarget.NasmRep + "," + rax.NasmRep, "program");
 				}
 		}
@@ -157,14 +162,14 @@ namespace OrganisedAssembly.Win64
 						Operand retOp = ArgumentToOperand((JsonProperty)value, "return value", compiler, null, true);
 
 						// move register only if necessary
-						if(retOp.type != OperandType.Register || retOp.operand != "rax" || retOp.NasmRep == "ah")
-							if(retOp.type != OperandType.Reference)
+						if(!(retOp is Register reg && reg.baseRegister == BaseRegister.RAX && reg.registerName != "ah"))
+							if(retOp is MemoryAddress mem && !mem.isAccess)
+								compiler.Generate("lea rax, [" + mem.address + "]", "program");
+							else
 							{
-								Operand rax = new Operand(retOp.size, "rax", OperandType.Register);
+								Register rax = new Register(BaseRegister.RAX, retOp.size);
 								compiler.Generate("mov" + rax.NasmRep + "," + retOp.NasmRep, "program");
 							}
-							else
-								compiler.Generate("lea rax, " + retOp.operand, "program");
 					}
 
 					compiler.Generate(new DeferredSymbol(() =>

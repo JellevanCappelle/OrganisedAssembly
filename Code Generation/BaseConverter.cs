@@ -185,7 +185,7 @@ namespace OrganisedAssembly
 			arg = (JsonProperty)arg.GetChildNonterminal();
 			if(arg.Name == "gpRegister")
 			{
-				Operand result = new Operand(arg.Flatten());
+				Register result = new Register(arg.Flatten());
 				if(expectedType != null && result.size != expectedType?.SizeSpec)
 					throw new LanguageException($"Operand size mismatch for '{name}'.");
 				return result;
@@ -197,7 +197,7 @@ namespace OrganisedAssembly
 
 				// memory address
 				if(arg.GetNonterminal("segAddress") is JsonProperty address)
-					return new Operand(SizeSpecifier.NONE, "[" + Resolve(address, compiler) + "]", OperandType.Reference);
+					return new MemoryAddress(Resolve(address, compiler), SizeSpecifier.NONE, isAccess: false);
 
 				// single quoted string literal
 				else if(arg.GetNonterminal("singleQuotedString") is JsonProperty cstr)
@@ -206,7 +206,7 @@ namespace OrganisedAssembly
 						throw new InvalidOperationException("Attempted to parse string literal without enabling data generation.");
 					String label = GetLabelString(compiler, "anonymous_c_string");
 					GenerateCString(label, cstr.Flatten(), compiler);
-					return new Operand(SizeSpecifier.NONE, $"[{label}]", OperandType.Reference);
+					return new MemoryAddress(label, SizeSpecifier.NONE, isAccess: false);
 				}
 
 				// double quoted string literal
@@ -216,7 +216,7 @@ namespace OrganisedAssembly
 						throw new InvalidOperationException("Attempted to parse string literal without enabling data generation.");
 					String label = GetLabelString(compiler, "anonymous_string");
 					GenerateString(label, str.Flatten(), compiler);
-					return new Operand(SizeSpecifier.NONE, $"[{label}]", OperandType.Reference);
+					return new MemoryAddress(label, SizeSpecifier.NONE, isAccess: false);
 				}
 				else
 					throw new LanguageException($"Malformed reference argument: '{arg.Flatten()}'.");
@@ -232,18 +232,15 @@ namespace OrganisedAssembly
 					size = argType.SizeSpec;
 				}
 				if(size != null)
-					return new Operand((SizeSpecifier)size,
-						"[" + Resolve((JsonProperty)arg.GetNonterminal("segAddress"), compiler) + "]",
-						OperandType.Memory);
+					return new MemoryAddress(Resolve((JsonProperty)arg.GetNonterminal("segAddress"), compiler), (SizeSpecifier)size);
 
 				// try to find implicit size
 				if(MemoryReferenceToPath(arg, compiler) is Identifier[] path)
 				{
 					Symbol var = compiler.ResolveSymbol(path);
-					SymbolString nasmRep = "[" + var + "]";
 					if(var.Size == SizeSpecifier.NONE)
 						throw new LanguageException($"No size specified for '{name}'.");
-					return new Operand(var.Size, nasmRep, OperandType.Memory);
+					return new MemoryAddress(var, var.Size);
 				}
 
 				// no size specified at all
@@ -257,13 +254,11 @@ namespace OrganisedAssembly
 						return alias.Register;
 
 				// use explicit or expected size
-				SizeSpecifier size = expectedType?.SizeSpec ?? SizeSpecifier.NONE;
-				if(arg.GetNonterminal("sizeSpecifier") is JsonProperty sizeSpec)
-					size = ParseSize(sizeSpec.Flatten());
-				if(size == SizeSpecifier.NONE)
-					throw new LanguageException($"No size specified for '{name}'.");
+				SizeSpecifier size = arg.GetNonterminal("sizeSpecifier") is JsonProperty sizeSpec
+					? ParseSize(sizeSpec.Flatten())
+					: expectedType?.SizeSpec ?? throw new LanguageException($"No size specified for '{name}'.");
 
-				return new Operand(size, Resolve((JsonProperty)arg.GetNonterminal("expr"), compiler), OperandType.Immediate);
+				return new Immediate(Resolve((JsonProperty)arg.GetNonterminal("expr"), compiler), size);
 			}
 			else if(arg.Name == "aliasDecl")
 			{
@@ -389,8 +384,7 @@ namespace OrganisedAssembly
 						returnTargets[i] = ReturnTargetToOperand(returnTargetList[i], compiler);
 
 					// generate the call
-					Operand functionOp = new Operand(SizeSpecifier.QWORD, function, OperandType.Immediate);
-					GenerateABICall(functionOp, metadata, arguments, returnTargets, compiler);
+					GenerateABICall(new Immediate(function), metadata, arguments, returnTargets, compiler);
 				}
 			});
 		}
@@ -419,7 +413,7 @@ namespace OrganisedAssembly
 						Symbol structSymbol = compiler.ResolveSymbol(structPath);
 						structType = (structSymbol as TypedSymbol)?.Type.Type ?? throw new LanguageException($"Type unknown for '{structPath}'.");
 						invalidMethod = new LanguageException($"'{methodPath}()' is not a valid non-static method of struct '[{structPath}]'.");
-						structOperand = new Operand(structType.Size, "[" + structSymbol + "]", OperandType.Memory);
+						structOperand = new MemoryAddress(structSymbol, structType.Size);
 					}
 					else // casted pointer to a struct
 					{
@@ -427,9 +421,9 @@ namespace OrganisedAssembly
 						invalidMethod = new LanguageException($"'{methodPath}()' is not a valid non-static method of type '{typePath}'.");
 						JsonProperty cast = reference.GetChildNonterminal() ?? throw malformed;
 						if(cast.Name == "regPointerCast")
-							structOperand = new Operand(cast.GetNonterminal("gpRegister")?.Flatten() ?? throw malformed);
+							structOperand = new Register(cast.GetNonterminal("gpRegister")?.Flatten() ?? throw malformed);
 						else
-							structOperand = new Operand(structType.Size, "[" + Resolve(cast.GetNonterminal("segAddress") ?? throw malformed, compiler) + "]", OperandType.Memory);
+							structOperand = new MemoryAddress(Resolve(cast.GetNonterminal("segAddress") ?? throw malformed, compiler), structType.Size);
 					}
 					Symbol method = structType.MemberScope.GetSymbol(methodPath.Resolve(compiler));
 
@@ -451,8 +445,7 @@ namespace OrganisedAssembly
 						returnTargets[i] = ReturnTargetToOperand(returnTargetList[i], compiler);
 
 					// generate the call
-					Operand methodOp = new Operand(SizeSpecifier.QWORD, method, OperandType.Immediate);
-					GenerateABICall(methodOp, metadata, arguments, returnTargets, compiler);
+					GenerateABICall(new Immediate(method), metadata, arguments, returnTargets, compiler);
 				}
 			});
 		}

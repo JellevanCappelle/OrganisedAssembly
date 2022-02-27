@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace OrganisedAssembly
 {
@@ -17,209 +18,41 @@ namespace OrganisedAssembly
 		QWORD = 8
 	}
 
-	enum OperandType
+	enum BaseRegister
 	{
-		Immediate,
-		Memory,
-		Reference,
-		Register
+		RAX,
+		RBX,
+		RCX,
+		RDX,
+		RSI,
+		RDI,
+		RSP,
+		RBP,
+		R8,
+		R9,
+		R10,
+		R11,
+		R12,
+		R13,
+		R14,
+		R15,
+		CR0,
+		CR2,
+		CR3,
+		CR4,
+		CR8
 	}
 
-	class Operand
+	abstract class Operand
 	{
 		public readonly SizeSpecifier size;
-		public readonly SymbolString operand;
-		public readonly OperandType type;
-		public readonly String registerName;
+		public abstract SymbolString NasmRep { get; }
 
-		public SymbolString NasmRep => type == OperandType.Register ? registerName : type == OperandType.Reference ? null : SizeToNasm(size) + operand; // can't generate a nasm representation for reference operands, because they need to be calculated at runtime via a 'lea' instruction
-		public String Size => SizeToNasm(size);
-		public readonly bool supportsByteAccess;
-		
-		private static Dictionary<SizeSpecifier, Dictionary<String, String>> registerNames = new Dictionary<SizeSpecifier, Dictionary<String, String>>
-		{
-			{ SizeSpecifier.QWORD, new Dictionary<String, String>
-			{
-				{ "rax", "rax" },
-				{ "rbx", "rbx" },
-				{ "rcx", "rcx" },
-				{ "rdx", "rdx" },
-				{ "rsi", "rsi" },
-				{ "rdi", "rdi" },
-				{ "r8", "r8" },
-				{ "r9", "r9" },
-				{ "r10", "r10" },
-				{ "r11", "r11" },
-				{ "r12", "r12" },
-				{ "r13", "r13" },
-				{ "r14", "r14" },
-				{ "r15", "r15" },
-				{ "rsp", "rsp" },
-				{ "rbp", "rbp" }
-			}},
-			{ SizeSpecifier.DWORD, new Dictionary<String, String>
-			{
-				{ "rax", "eax" },
-				{ "rbx", "ebx" },
-				{ "rcx", "ecx" },
-				{ "rdx", "edx" },
-				{ "rsi", "esi" },
-				{ "rdi", "edi" },
-				{ "r8", "r8d" },
-				{ "r9", "r9d" },
-				{ "r10", "r10d" },
-				{ "r11", "r11d" },
-				{ "r12", "r12d" },
-				{ "r13", "r13d" },
-				{ "r14", "r14d" },
-				{ "r15", "r15d" },
-				{ "rsp", "esp" },
-				{ "rbp", "ebp" }
-			}},
-			{ SizeSpecifier.WORD, new Dictionary<String, String>
-			{
-				{ "rax", "ax" },
-				{ "rbx", "bx" },
-				{ "rcx", "cx" },
-				{ "rdx", "dx" },
-				{ "rsi", "si" },
-				{ "rdi", "di" },
-				{ "r8", "r8w" },
-				{ "r9", "r9w" },
-				{ "r10", "r10w" },
-				{ "r11", "r11w" },
-				{ "r12", "r12w" },
-				{ "r13", "r13w" },
-				{ "r14", "r14w" },
-				{ "r15", "r15w" },
-				{ "rsp", "sp" },
-				{ "rbp", "bp" }
-			}},
-			{ SizeSpecifier.BYTE, new Dictionary<String, String>
-			{
-				{ "rax", "al" },
-				{ "rbx", "bl" },
-				{ "rcx", "cl" },
-				{ "rdx", "dl" }
-			}}
-		};
+		public Operand(SizeSpecifier size) => this.size = size;
 
-		public Operand(String register)
-		{
-			type = OperandType.Register;
-			registerName = register;
-			switch(register)
-			{
-				case "rax":
-				case "rbx":
-				case "rcx":
-				case "rdx":
-				case "rsi":
-				case "rdi":
-				case "r8":
-				case "r9":
-				case "r10":
-				case "r11":
-				case "r12":
-				case "r13":
-				case "r14":
-				case "r15":
-				case "rsp":
-				case "rbp":
-				case "cr0": // TODO: do these work with all of the operand functionality???
-				case "cr2":
-				case "cr3":
-				case "cr4":
-				case "cr8":
-					{
-						operand = register;
-						size = SizeSpecifier.QWORD;
-					}
-					break;
-				case "eax":
-				case "ebx":
-				case "ecx":
-				case "edx":
-				case "esi":
-				case "edi":
-				case "r8d":
-				case "r9d":
-				case "r10d":
-				case "r11d":
-				case "r12d":
-				case "r13d":
-				case "r14d":
-				case "r15d":
-				case "esp":
-				case "ebp":
-					{
-						operand = register.StartsWith('e') ? 'r' + register.Substring(1) : register.Replace("d", "");
-						size = SizeSpecifier.DWORD;
-					}
-					break;
-				case "ax":
-				case "bx":
-				case "cx":
-				case "dx":
-				case "si":
-				case "di":
-				case "r8w":
-				case "r9w":
-				case "r10w":
-				case "r11w":
-				case "r12w":
-				case "r13w":
-				case "r14w":
-				case "r15w":
-				case "sp":
-				case "bp":
-					{
-						operand = register.StartsWith('r') ? register.Replace("w", "") :  'r' + register;
-						size = SizeSpecifier.WORD;
-					}
-					break;
-				case "al":
-				case "ah":
-				case "bl":
-				case "bh":
-				case "cl":
-				case "ch":
-				case "dl":
-				case "dh":
-					{
-						operand = $"r{register[0]}x";
-						size = SizeSpecifier.BYTE;
-					}
-					break;
-				default:
-					throw new LanguageException($"{register} is not recognised as a register.");
-			}
-			supportsByteAccess = registerNames[SizeSpecifier.BYTE].ContainsKey(operand.ToString());
-		}
+		public abstract bool OperandEquals(Operand other);
 
-		public Operand(SizeSpecifier size, SymbolString operand, OperandType type, bool upgradeByteRegisters = false)
-		{
-			if(type != OperandType.Reference && size == SizeSpecifier.NONE)
-				throw new InvalidOperationException("Attemted to construct Operand with undefined size specifier.");
-			
-			if(type == OperandType.Register)
-			{
-				String operandString = operand.ToString();
-				if(upgradeByteRegisters && size == SizeSpecifier.BYTE && !registerNames[size].ContainsKey(operandString))
-					size = SizeSpecifier.WORD; // upgrade to word operand if the target register can't be addressed as a byte
-				if(!registerNames[size].ContainsKey(operandString))
-					throw new LanguageException($"Can't resize '{operandString}' to size {size}.");
-				registerName = registerNames[size][operandString];
-				supportsByteAccess = registerNames[SizeSpecifier.BYTE].ContainsKey(operandString);
-			}
-
-			this.size = size;
-			this.operand = operand;
-			this.type = type;
-		}
-
-		public Operand(Operand original, SizeSpecifier newSize) : this(newSize, original.operand, original.type) { }
-		public Operand Resize(SizeSpecifier newSize) => new Operand(this, newSize);
+		public abstract Operand Resize(SizeSpecifier newSize); // should at least work whenever size != SizeSpecifier.NONE && newSize > size
 
 		public static String SizeToNasm(SizeSpecifier size)
 		{
@@ -237,7 +70,134 @@ namespace OrganisedAssembly
 					throw new InvalidOperationException("Attempted to convert undefined size specifier to its nasm representation.");
 			}
 		}
+	}
 
-		public override string ToString() => NasmRep.ToString();
+	sealed class Immediate : Operand
+	{
+		private readonly SymbolString immediate;
+		public override SymbolString NasmRep => size == SizeSpecifier.NONE ? immediate : SizeToNasm(size) + immediate;
+
+		public override bool OperandEquals(Operand other) => other is Immediate otherImm ? immediate.Equals(otherImm.immediate) : false;
+
+		public Immediate(SymbolString immediate, SizeSpecifier size = SizeSpecifier.NONE) : base(size) => this.immediate = immediate;
+
+		public override Operand Resize(SizeSpecifier newSize) => new Immediate(immediate, newSize);
+	}
+
+	sealed class MemoryAddress : Operand
+	{
+		public readonly bool isAccess;
+		public readonly SymbolString address;
+		public override SymbolString NasmRep => isAccess ? $"{SizeToNasm(size)} [" + address + "]" : throw new InvalidOperationException("Can't use an address as an operand directly.");
+
+		public override bool OperandEquals(Operand other) => other is MemoryAddress otherMem ? address.Equals(otherMem.address) : false;
+
+		public MemoryAddress(SymbolString address, SizeSpecifier size, bool isAccess = true) : base(size)
+		{
+			if(!isAccess && size != SizeSpecifier.NONE)
+				throw new InvalidOperationException("Can't assign a size to an address.");
+			this.address = address;
+			this.isAccess = isAccess;
+		}
+
+		public override Operand Resize(SizeSpecifier newSize) => new MemoryAddress(address, newSize, isAccess);
+	}
+
+	sealed class Register : Operand
+	{
+		public readonly String registerName;
+		public readonly BaseRegister baseRegister;
+		public override SymbolString NasmRep => registerName;
+
+		public override bool OperandEquals(Operand other) => other is Register otherReg ? baseRegister == otherReg.baseRegister : false;
+
+		public Register(BaseRegister register, SizeSpecifier size) : base(size) // TODO: upgradeSize edition
+		{
+			baseRegister = register;
+			registerName = registerNames[(register, size)];
+		}
+
+		private Register((BaseRegister register, SizeSpecifier size) tuple) : base(tuple.size) => baseRegister = tuple.register;
+		public Register(String register) : this(nameToBase[register]) => registerName = register;
+
+		public override Operand Resize(SizeSpecifier newSize) => new Register(baseRegister, newSize);
+
+		private static Dictionary<(BaseRegister, SizeSpecifier), String> registerNames = new Dictionary<(BaseRegister, SizeSpecifier), String>
+		{
+			// qword
+			{ (BaseRegister.RAX, SizeSpecifier.QWORD), "rax" },
+			{ (BaseRegister.RBX, SizeSpecifier.QWORD), "rbx" },
+			{ (BaseRegister.RCX, SizeSpecifier.QWORD), "rcx" },
+			{ (BaseRegister.RDX, SizeSpecifier.QWORD), "rdx" },
+			{ (BaseRegister.RSI, SizeSpecifier.QWORD), "rsi" },
+			{ (BaseRegister.RDI, SizeSpecifier.QWORD), "rdi" },
+			{ (BaseRegister.RSP, SizeSpecifier.QWORD), "rsp" },
+			{ (BaseRegister.RBP, SizeSpecifier.QWORD), "rbp" },
+			{ (BaseRegister.R8, SizeSpecifier.QWORD), "r8" },
+			{ (BaseRegister.R9, SizeSpecifier.QWORD), "r9" },
+			{ (BaseRegister.R10, SizeSpecifier.QWORD), "r10" },
+			{ (BaseRegister.R11, SizeSpecifier.QWORD), "r11" },
+			{ (BaseRegister.R12, SizeSpecifier.QWORD), "r12" },
+			{ (BaseRegister.R13, SizeSpecifier.QWORD), "r13" },
+			{ (BaseRegister.R14, SizeSpecifier.QWORD), "r14" },
+			{ (BaseRegister.R15, SizeSpecifier.QWORD), "r15" },
+			{ (BaseRegister.CR0, SizeSpecifier.QWORD), "cr0" },
+			{ (BaseRegister.CR2, SizeSpecifier.QWORD), "cr2" },
+			{ (BaseRegister.CR3, SizeSpecifier.QWORD), "cr3" },
+			{ (BaseRegister.CR4, SizeSpecifier.QWORD), "cr4" },
+			{ (BaseRegister.CR8, SizeSpecifier.QWORD), "cr8" },
+
+			// dword
+			{ (BaseRegister.RAX, SizeSpecifier.DWORD), "eax" },
+			{ (BaseRegister.RBX, SizeSpecifier.DWORD), "ebx" },
+			{ (BaseRegister.RCX, SizeSpecifier.DWORD), "ecx" },
+			{ (BaseRegister.RDX, SizeSpecifier.DWORD), "edx" },
+			{ (BaseRegister.RSI, SizeSpecifier.DWORD), "esi" },
+			{ (BaseRegister.RDI, SizeSpecifier.DWORD), "edi" },
+			{ (BaseRegister.RSP, SizeSpecifier.DWORD), "esp" },
+			{ (BaseRegister.RBP, SizeSpecifier.DWORD), "ebp" },
+			{ (BaseRegister.R8, SizeSpecifier.DWORD), "r8d" },
+			{ (BaseRegister.R9, SizeSpecifier.DWORD), "r9d" },
+			{ (BaseRegister.R10, SizeSpecifier.DWORD), "r10d" },
+			{ (BaseRegister.R11, SizeSpecifier.DWORD), "r11d" },
+			{ (BaseRegister.R12, SizeSpecifier.DWORD), "r12d" },
+			{ (BaseRegister.R13, SizeSpecifier.DWORD), "r13d" },
+			{ (BaseRegister.R14, SizeSpecifier.DWORD), "r14d" },
+			{ (BaseRegister.R15, SizeSpecifier.DWORD), "r15d" },
+
+			// word
+			{ (BaseRegister.RAX, SizeSpecifier.WORD), "ax" },
+			{ (BaseRegister.RBX, SizeSpecifier.WORD), "bx" },
+			{ (BaseRegister.RCX, SizeSpecifier.WORD), "cx" },
+			{ (BaseRegister.RDX, SizeSpecifier.WORD), "dx" },
+			{ (BaseRegister.RSI, SizeSpecifier.WORD), "si" },
+			{ (BaseRegister.RDI, SizeSpecifier.WORD), "di" },
+			{ (BaseRegister.RSP, SizeSpecifier.WORD), "sp" },
+			{ (BaseRegister.RBP, SizeSpecifier.WORD), "bp" },
+			{ (BaseRegister.R8, SizeSpecifier.WORD), "r8w" },
+			{ (BaseRegister.R9, SizeSpecifier.WORD), "r9w" },
+			{ (BaseRegister.R10, SizeSpecifier.WORD), "r10w" },
+			{ (BaseRegister.R11, SizeSpecifier.WORD), "r11w" },
+			{ (BaseRegister.R12, SizeSpecifier.WORD), "r12w" },
+			{ (BaseRegister.R13, SizeSpecifier.WORD), "r13w" },
+			{ (BaseRegister.R14, SizeSpecifier.WORD), "r14w" },
+			{ (BaseRegister.R15, SizeSpecifier.WORD), "r15w" },
+
+			// byte
+			{ (BaseRegister.RAX, SizeSpecifier.BYTE), "al" },
+			{ (BaseRegister.RBX, SizeSpecifier.BYTE), "bl" },
+			{ (BaseRegister.RCX, SizeSpecifier.BYTE), "cl" },
+			{ (BaseRegister.RDX, SizeSpecifier.BYTE), "dl" },
+		};
+
+		private static Dictionary<String, (BaseRegister, SizeSpecifier)> nameToBase = new Dictionary<String, (BaseRegister, SizeSpecifier)>((from x in registerNames select new KeyValuePair<String, (BaseRegister, SizeSpecifier)>(x.Value, x.Key)).Concat(
+			new KeyValuePair<String, (BaseRegister, SizeSpecifier)>[]
+			{
+				new KeyValuePair<String, (BaseRegister, SizeSpecifier)>("ah", (BaseRegister.RAX, SizeSpecifier.BYTE)),
+				new KeyValuePair<String, (BaseRegister, SizeSpecifier)>("bh", (BaseRegister.RBX, SizeSpecifier.BYTE)),
+				new KeyValuePair<String, (BaseRegister, SizeSpecifier)>("ch", (BaseRegister.RCX, SizeSpecifier.BYTE)),
+				new KeyValuePair<String, (BaseRegister, SizeSpecifier)>("dh", (BaseRegister.RDX, SizeSpecifier.BYTE)),
+			}
+		));
 	}
 }
