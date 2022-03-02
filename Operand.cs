@@ -46,36 +46,19 @@ namespace OrganisedAssembly
 	abstract class Operand
 	{
 		public readonly SizeSpecifier size;
-		public abstract SymbolString NasmRep { get; }
+		public abstract SymbolString Nasm { get; }
 
 		public Operand(SizeSpecifier size) => this.size = size;
 
 		public abstract bool OperandEquals(Operand other);
 
 		public abstract Operand Resize(SizeSpecifier newSize); // should at least work whenever size != SizeSpecifier.NONE && newSize > size
-
-		public static String SizeToNasm(SizeSpecifier size)
-		{
-			switch(size)
-			{
-				case SizeSpecifier.BYTE:
-					return "byte";
-				case SizeSpecifier.WORD:
-					return "word";
-				case SizeSpecifier.DWORD:
-					return "dword";
-				case SizeSpecifier.QWORD:
-					return "qword";
-				default:
-					throw new InvalidOperationException("Attempted to convert undefined size specifier to its nasm representation.");
-			}
-		}
 	}
 
 	sealed class Immediate : Operand
 	{
 		private readonly SymbolString immediate;
-		public override SymbolString NasmRep => size == SizeSpecifier.NONE ? immediate : SizeToNasm(size) + immediate;
+		public override SymbolString Nasm => size == SizeSpecifier.NONE ? immediate : size.ToNasm() + immediate;
 
 		public override bool OperandEquals(Operand other) => other is Immediate otherImm ? immediate.Equals(otherImm.immediate) : false;
 
@@ -88,7 +71,7 @@ namespace OrganisedAssembly
 	{
 		public readonly bool isAccess;
 		public readonly SymbolString address;
-		public override SymbolString NasmRep => isAccess ? $"{SizeToNasm(size)} [" + address + "]" : throw new InvalidOperationException("Can't use an address as an operand directly.");
+		public override SymbolString Nasm => isAccess ? $"{size.ToNasm()} [" + address + "]" : throw new InvalidOperationException("Can't use an address as an operand directly.");
 
 		public override bool OperandEquals(Operand other) => other is MemoryAddress otherMem ? address.Equals(otherMem.address) : false;
 
@@ -107,7 +90,7 @@ namespace OrganisedAssembly
 	{
 		public readonly String registerName;
 		public readonly BaseRegister baseRegister;
-		public override SymbolString NasmRep => registerName;
+		public override SymbolString Nasm => registerName;
 
 		public override bool OperandEquals(Operand other) => other is Register otherReg ? baseRegister == otherReg.baseRegister : false;
 

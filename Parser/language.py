@@ -126,7 +126,7 @@ def textStringDecl(): return "string", '[', name, ']', '=', doubleQuotedString
 def cStringDecl(): return "cstring", '[', name, ']', '=', singleQuotedString
 def fileDecl(): return "binary", '[', name, ']', ':', doubleQuotedString
 def constantDecl(): return "constant", name, '=', expr
-def arrayDecl(): return "byte", '(', expr, ')', '[', name, ']'
+def arrayDecl(): return "byte", '<', expr, '>', '[', name, ']'
 def aliasDecl(): return "alias", name, '=', gpRegister
 def declaration(): return [variableDecl, dataStringDecl, textStringDecl, cStringDecl, constantDecl, arrayDecl, aliasDecl, fileDecl]
 

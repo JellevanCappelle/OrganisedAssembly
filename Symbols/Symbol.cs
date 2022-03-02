@@ -121,9 +121,9 @@ namespace OrganisedAssembly
 
 		public static implicit operator SymbolString(Symbol symbol) => new SymbolString(symbol);
 		public static implicit operator SymbolString(String constant) => new SymbolString(new ConstantSymbol(constant));
-		public static implicit operator SymbolString(Operand operand) => operand.NasmRep;
+		public static implicit operator SymbolString(Operand operand) => operand.Nasm;
 		public static SymbolString operator +(SymbolString A, SymbolString B) => new SymbolString(A.symbols.Concat(B.symbols).ToList());
-		public static SymbolString operator +(SymbolString A, Operand B) => A + B.NasmRep;
+		public static SymbolString operator +(SymbolString A, Operand B) => A + B.Nasm;
 		public static SymbolString operator +(SymbolString A, Symbol B)
 		{
 			List<Symbol> symbols = new List<Symbol>(A.symbols);

@@ -72,7 +72,15 @@ namespace OrganisedAssembly
 				project.platform == "kernel" && project.format == "bin" ? new KernelCompiler(project, converter) :
 				project.platform == "win64" && project.format == "win64" ? new Win64Compiler(project, converter) :
 				throw new NotImplementedException($"Combination of platform '{project.platform}' and format '{project.format}' not implemented.");
-			compiler.Compile();
+			try
+			{
+				compiler.Compile();
+			}
+			catch(LanguageException e)
+			{
+				Console.WriteLine(e.Message);
+				return;
+			}
 
 			if(CompilerSettings.Verbose)
 				Console.Write($"Finished in {time.Elapsed.TotalSeconds:f3} seconds.");

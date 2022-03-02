@@ -74,7 +74,7 @@ namespace OrganisedAssembly
 						type.Solve(compiler);
 						compiler.DeclareVariable(type, name);
 						if(value != null)
-							compiler.Generate($"mov {Operand.SizeToNasm(type.SizeSpec)} [" + compiler.ResolveSymbol(name) + "]," + Resolve((JsonProperty)value, compiler), "program");
+							compiler.Generate($"mov {type.SizeSpec.ToNasm()} [" + compiler.ResolveSymbol(name) + "]," + Resolve((JsonProperty)value, compiler), "program");
 					}
 					else
 					{

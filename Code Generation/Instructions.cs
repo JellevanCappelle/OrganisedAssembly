@@ -74,12 +74,27 @@ namespace OrganisedAssembly
 				return (new Register(operand.Flatten()).size, SizePriority.Register);
 			else if(operand.Name == "memReference")
 			{
+				(SizeSpecifier size, SizePriority priority) explicitSize = (SizeSpecifier.NONE, SizePriority.Undefined);
 				if(operand.GetNonterminal("sizeSpecifier") is JsonProperty size)
-					return (ParseSize(size.Flatten()), SizePriority.Explicit);
-				else if(MemoryReferenceToPath(operand, compiler) is Identifier[] path)
-					return (compiler.ResolveSymbol(path).Size, SizePriority.Implicit);
+					explicitSize = (ParseSize(size.Flatten()), SizePriority.Explicit);
+
+				if(MemoryReferenceToPath(operand, compiler) is Identifier[] path)
+				{
+					Symbol symbol = compiler.ResolveSymbol(path);
+					if(symbol is not AliasSymbol) // alias symbols don't define the size of the memory they point to
+						if(explicitSize.priority == SizePriority.Undefined)
+							return symbol.Size != SizeSpecifier.NONE
+								? (symbol.Size, SizePriority.Implicit)
+								: (SizeSpecifier.NONE, SizePriority.Undefined);
+						else if(explicitSize.size <= symbol.Size || symbol.Size == SizeSpecifier.NONE)
+							return explicitSize;
+						else
+							throw new LanguageException($"Attempted to upgrade the size of '{String.Join<Identifier>('.', path)}' from {symbol.Size.ToHumanReadable()} to {explicitSize.size.ToHumanReadable()}.");
+					else
+						return explicitSize;
+				}
 				else
-					return (SizeSpecifier.NONE, SizePriority.Undefined);
+					return explicitSize;
 			}
 			else if(operand.Name == "aliasDecl")
 				return (GenerateAlias(operand, compiler).size, SizePriority.Register);
@@ -118,7 +133,7 @@ namespace OrganisedAssembly
 				{
 					var size = GetOperandSize(operand, compiler);
 					if(size.priority == SizePriority.Implicit)
-						compiler.Generate((SymbolString)instruction + Operand.SizeToNasm(size.size) + Resolve(operand, compiler), "program");
+						compiler.Generate((SymbolString)instruction + size.size.ToNasm() + Resolve(operand, compiler), "program");
 					else
 						compiler.Generate(instruction + Resolve(operand, compiler), "program");
 				}
@@ -147,21 +162,21 @@ namespace OrganisedAssembly
 					// determine size based on priorities
 					SizeSpecifier size;
 					SizePriority sizeType;
-					LanguageException mismatch = new LanguageException($"Size mismatch between operands '{operands[0].Flatten()}' and '{operands[1].Flatten()}'.");
+					Func<LanguageException> mismatch = () => new LanguageException($"Size mismatch between operands '{operands[0].Flatten()}' ({op1size.size.ToHumanReadable()}) and '{operands[1].Flatten()}' ({op2size.size.ToHumanReadable()}).");
 					if(op1size.priority > op2size.priority)
 					{
-						if(op2size.priority >= SizePriority.Explicit && op1size.size != op2size.size)
-							throw mismatch;
+						if(op2size.priority >= SizePriority.Implicit && op1size.size != op2size.size)
+							throw mismatch();
 						(size, sizeType) = op1size;
 					}
 					else if(op2size.priority > op1size.priority)
 					{
-						if(op1size.priority >= SizePriority.Explicit && op1size.size != op2size.size)
-							throw mismatch;
+						if(op1size.priority >= SizePriority.Implicit && op1size.size != op2size.size)
+							throw mismatch();
 						(size, sizeType) = op2size;
 					}
 					else if(op1size.size != op2size.size)
-						throw mismatch;
+						throw mismatch();
 					else // completely equal
 						(size, sizeType) = op1size;
 
@@ -169,8 +184,8 @@ namespace OrganisedAssembly
 					if(size == SizeSpecifier.NONE)
 						throw new LanguageException($"No size specified for operands '{operands[0].Flatten()}' and '{operands[1].Flatten()}'.");
 
-					if(sizeType == SizePriority.Implicit)
-						compiler.Generate((SymbolString)instruction + Operand.SizeToNasm(size) + Resolve(operands[0], compiler) + "," + Resolve(operands[1], compiler), "program");
+					if(sizeType == SizePriority.Implicit) // make sure to include the size in the outputted nasm code
+						compiler.Generate((SymbolString)instruction + size.ToNasm() + Resolve(operands[0], compiler) + "," + Resolve(operands[1], compiler), "program");
 					else
 						compiler.Generate(instruction + Resolve(operands[0], compiler) + "," + Resolve(operands[1], compiler), "program");
 				}
@@ -199,7 +214,7 @@ namespace OrganisedAssembly
 				{
 					var op1size = GetOperandSize(operands[0], compiler);
 					SymbolString line = op1size.priority == SizePriority.Implicit
-						? (SymbolString)instruction + Operand.SizeToNasm(op1size.size) + Resolve(operands[0], compiler)
+						? (SymbolString)instruction + op1size.size.ToNasm() + Resolve(operands[0], compiler)
 						: instruction + Resolve(operands[0], compiler);
 					if(operands.Length == 2) // TODO: proper checking for correct operands: either an immediate byte, or 'cl'
 					{

@@ -18,7 +18,7 @@ namespace OrganisedAssembly.Win64
 				{
 					(Register source, Register dest) = moves[i];
 					moves.RemoveAt(i);
-					compiler.Generate("mov" + dest.NasmRep + "," + source.NasmRep, "program");
+					compiler.Generate("mov" + dest.Nasm + "," + source.Nasm, "program");
 				}
 				else
 				{
@@ -36,7 +36,7 @@ namespace OrganisedAssembly.Win64
 					}
 					moves[i] = (new Register(source.baseRegister, moves[i].src.size), moves[i].dst);
 
-					compiler.Generate("xchg" + dest.NasmRep + "," + source.NasmRep, "program");
+					compiler.Generate("xchg" + dest.Nasm + "," + source.Nasm, "program");
 				}
 			}
 		}
@@ -77,7 +77,7 @@ namespace OrganisedAssembly.Win64
 			// register/immediate-to-stack
 			for(int i = 4; i < arguments.Length; i++)
 				if(arguments[i] is Register || arguments[i] is Immediate)
-					lines.Add($"mov {arguments[i].size} [rsp + {i * 8}], {arguments[i].NasmRep}");
+					lines.Add($"mov {arguments[i].size.ToNasm()} [rsp + {i * 8}], {arguments[i].Nasm}");
 
 			// register-to-register
 			List<(Register src, Register dst)> moves = new List<(Register src, Register dst)>();
@@ -100,12 +100,12 @@ namespace OrganisedAssembly.Win64
 			for(int i = 0; i < 4 && i < arguments.Length; i++)
 				if(arguments[i] is not Register)
 					if(arguments[i] is MemoryAddress arg && !arg.isAccess) // can be 'lea'-ed directly into the target register
-						lines.Add($"lea {parameterRegisters[i]}, [" + arg.address + "]");
+						lines.Add($"lea {parameterRegisters[i].ToNasm()}, [" + arg.address + "]");
 					else
 					{
 						SizeSpecifier size = (i >= 2 && arguments[i].size == SizeSpecifier.BYTE) ? SizeSpecifier.WORD : arguments[i].size;
 						Register dest = new Register(parameterRegisters[i], size);
-						lines.Add($"mov {dest.NasmRep}," + arguments[i].Resize(dest.size).NasmRep); // TODO: throw error if the destination register size is upgraded but the argument is too large for the original size
+						lines.Add($"mov {dest.Nasm}," + arguments[i].Resize(dest.size).Nasm); // TODO: throw error if the destination register size is upgraded but the argument is too large for the original size
 					}
 
 			// memory-to-stack: use rax as scratch register since it is volatile under Win64
@@ -114,8 +114,8 @@ namespace OrganisedAssembly.Win64
 					if(arg.isAccess)
 					{
 						Register rax = new Register(BaseRegister.RAX, arguments[i].size);
-						lines.Add($"mov {rax.NasmRep}," + arguments[i].NasmRep);
-						lines.Add($"mov [rsp + {i * 8}], {rax.NasmRep}");
+						lines.Add($"mov {rax.Nasm}," + arguments[i].Nasm);
+						lines.Add($"mov [rsp + {i * 8}], {rax.Nasm}");
 					}
 					else
 					{
@@ -127,7 +127,7 @@ namespace OrganisedAssembly.Win64
 				compiler.Generate(line, "program");
 
 			// make the call and clean up stack
-			compiler.Generate("call" + function.NasmRep, "program");
+			compiler.Generate("call" + function.Nasm, "program");
 			compiler.MoveStackPointer(argumentStack);
 			compiler.DeclareCall();
 
@@ -138,7 +138,7 @@ namespace OrganisedAssembly.Win64
 				else if(!(returnTarget is Register reg2 && reg2.baseRegister == BaseRegister.RAX))
 				{
 					Register rax = new Register(BaseRegister.RAX, returnTarget.size);
-					compiler.Generate("mov" + returnTarget.NasmRep + "," + rax.NasmRep, "program");
+					compiler.Generate("mov" + returnTarget.Nasm + "," + rax.Nasm, "program");
 				}
 		}
 
@@ -168,7 +168,7 @@ namespace OrganisedAssembly.Win64
 							else
 							{
 								Register rax = new Register(BaseRegister.RAX, retOp.size);
-								compiler.Generate("mov" + rax.NasmRep + "," + retOp.NasmRep, "program");
+								compiler.Generate("mov" + rax.Nasm + "," + retOp.Nasm, "program");
 							}
 					}
 
@@ -240,7 +240,7 @@ namespace OrganisedAssembly.Win64
 						int offset = 8 + i * 8;
 						compiler.DeclareExistingStackVariable(solvedParameters[i].type, solvedParameters[i].name, offset);
 						if(i < 4) // handle register / shadow space parameters
-							compiler.Generate($"mov [rsp + {offset}], {parameterRegisters[i]}", "program"); // TODO: adapt size of register when possible?
+							compiler.Generate($"mov [rsp + {offset}], {parameterRegisters[i].ToNasm()}", "program"); // TODO: adapt size of register when possible?
 					}
 
 					compiler.Generate(new DeferredSymbol(() =>
