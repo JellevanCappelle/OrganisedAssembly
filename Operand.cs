@@ -71,7 +71,7 @@ namespace OrganisedAssembly
 	{
 		public readonly bool isAccess;
 		public readonly SymbolString address;
-		public override SymbolString Nasm => isAccess ? $"{size.ToNasm()} [" + address + "]" : throw new InvalidOperationException("Can't use an address as an operand directly.");
+		public override SymbolString Nasm => isAccess ? (SymbolString)$"{size.ToNasm()}" + "[" + address + "]" : throw new InvalidOperationException("Can't use an address as an operand directly.");
 
 		public override bool OperandEquals(Operand other) => other is MemoryAddress otherMem ? address.Equals(otherMem.address) : false;
 
@@ -84,6 +84,15 @@ namespace OrganisedAssembly
 		}
 
 		public override Operand Resize(SizeSpecifier newSize) => new MemoryAddress(address, newSize, isAccess);
+
+		public IEnumerable<BaseRegister> EnumerateRegisters()
+		{
+			foreach(Symbol s in address.Symbols)
+				if(s is RegisterSymbol register)
+					yield return register.Register.baseRegister;
+				else if(s is StackSymbol)
+					yield return BaseRegister.RSP;
+		}
 	}
 
 	sealed class Register : Operand
@@ -182,5 +191,7 @@ namespace OrganisedAssembly
 				new KeyValuePair<String, (BaseRegister, SizeSpecifier)>("dh", (BaseRegister.RDX, SizeSpecifier.BYTE)),
 			}
 		));
+
+		public static IEnumerable<String> Names => nameToBase.Keys;
 	}
 }

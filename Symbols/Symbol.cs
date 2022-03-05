@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text;
 
 namespace OrganisedAssembly
 {
@@ -68,7 +70,6 @@ namespace OrganisedAssembly
 				return rspOffset >= 0 ? "rsp + " + rspOffset : "rsp - " + (-rspOffset);
 			}
 		}
-
 		public StackSymbol(Stack stack, int offset, ValueType type) : base(type)
 		{
 			this.stack = stack;
@@ -76,16 +77,31 @@ namespace OrganisedAssembly
 		}
 	}
 
-	class AliasSymbol : Symbol
+	class RegisterSymbol : Symbol
 	{
 		protected Register register;
+		protected readonly bool canAssign;
 		public Register Register => register;
 		public override String Nasm => register.registerName;
 		public override SizeSpecifier Size => register.size;
 
-		public AliasSymbol(String register) => this.register = new Register(register);
+		public static readonly ReadOnlyDictionary<String, RegisterSymbol> lookup = new ReadOnlyDictionary<String, RegisterSymbol>(new Dictionary<String, RegisterSymbol>(
+			from name in Register.Names select new KeyValuePair<String, RegisterSymbol>(name, new RegisterSymbol(name, false))
+			));
 
-		public void Assign(String register) => this.register = new Register(register);
+		public RegisterSymbol(String register, bool canAssign = true)
+		{
+			this.register = new Register(register);
+			this.canAssign = canAssign;
+		}
+
+		public void Assign(String register)
+		{
+			if(canAssign)
+				this.register = new Register(register);
+			else
+				throw new InvalidOperationException("Attempted to assign to a read-only register symbol.");
+		}
 	}
 
 	class FunctionSymbol : ConstantSymbol
@@ -113,6 +129,7 @@ namespace OrganisedAssembly
 	{
 		protected readonly List<Symbol> symbols;
 		public bool IsStackReference => symbols.Exists(symbol => symbol is StackSymbol);
+		public IEnumerable<Symbol> Symbols => symbols;
 
 		public SymbolString() => symbols = new List<Symbol>();
 		public SymbolString(List<Symbol> symbols) => this.symbols = symbols;
@@ -131,7 +148,49 @@ namespace OrganisedAssembly
 			return new SymbolString(symbols);
 		}
 
-		public override string ToString() => String.Join(' ', from symbol in symbols select symbol.Nasm);
+		private static String[] parentheses = { "(", "[", "{", "<", ")", "]", "}", ">" };
+		private static String[] binaryOperators = { "+", "-", "*", "/", "^", "&", "|" };
+		private static String[] comma = { ",", ":" };
+		public override string ToString()
+		{
+			StringBuilder builder = new StringBuilder();
+			bool space = false;
+			bool noSpace = true;
+			foreach(Symbol s in symbols)
+			{
+				String str = s.Nasm;
+				if(comma.Contains(str))
+				{
+					builder.Append(str);
+					space = true;
+					noSpace = false;
+				}
+				else if(parentheses.Contains(str))
+				{
+					if(space || str == "[" && !noSpace)
+						builder.Append(" ");
+					builder.Append(str);
+					space = false;
+					noSpace = true;
+				}
+				else if(binaryOperators.Contains(str))
+				{
+					if(!noSpace)
+						builder.Append(" ");
+					builder.Append(str);
+					space = true;
+					noSpace = false;
+				}
+				else
+				{
+					if(!noSpace)
+						builder.Append(" ");
+					builder.Append(str);
+					space = noSpace = false;
+				}
+			}
+			return builder.ToString();
+		}
 
 		public override bool Equals(object obj)
 		{
@@ -158,7 +217,7 @@ namespace OrganisedAssembly
 		public void ResolveAliases()
 		{
 			for(int i = 0; i < symbols.Count; i++)
-				if(symbols[i] is AliasSymbol alias)
+				if(symbols[i] is RegisterSymbol alias)
 					symbols[i] = alias.Nasm;
 		}
 	}

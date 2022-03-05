@@ -76,5 +76,17 @@ namespace OrganisedAssembly
 				throw new InvalidOperationException("Encountered a cycle in the dependency graph.");
 			inboundEdges = outboundEdges = null;
 		}
+
+		public IEnumerable<T> SortWithException(Exception e)
+		{
+			try
+			{
+				return Sort();
+			}
+			catch(InvalidOperationException)
+			{
+				throw e;
+			}
+		}
 	}
 }

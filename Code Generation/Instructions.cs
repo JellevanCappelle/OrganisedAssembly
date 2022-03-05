@@ -81,7 +81,7 @@ namespace OrganisedAssembly
 				if(MemoryReferenceToPath(operand, compiler) is Identifier[] path)
 				{
 					Symbol symbol = compiler.ResolveSymbol(path);
-					if(symbol is not AliasSymbol) // alias symbols don't define the size of the memory they point to
+					if(symbol is not RegisterSymbol) // alias symbols don't define the size of the memory they point to
 						if(explicitSize.priority == SizePriority.Undefined)
 							return symbol.Size != SizeSpecifier.NONE
 								? (symbol.Size, SizePriority.Implicit)
@@ -101,7 +101,7 @@ namespace OrganisedAssembly
 			else if(operand.Name == "immediate")
 			{
 				Identifier[] path = ExpressionToPath(operand.GetNonterminal("expr") ?? throw new LanguageException($"Encountered malformed immediate: '{operand}'."), compiler);
-				if(path != null && compiler.ResolveSymbol(path) is AliasSymbol alias)
+				if(path != null && compiler.ResolveSymbol(path) is RegisterSymbol alias)
 				{
 					if(operand.GetNonterminal("sizeSpecifier") is JsonProperty size)
 						if(ParseSize(size.Flatten()) != alias.Size)

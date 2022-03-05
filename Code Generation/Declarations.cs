@@ -74,7 +74,7 @@ namespace OrganisedAssembly
 						type.Solve(compiler);
 						compiler.DeclareVariable(type, name);
 						if(value != null)
-							compiler.Generate($"mov {type.SizeSpec.ToNasm()} [" + compiler.ResolveSymbol(name) + "]," + Resolve((JsonProperty)value, compiler), "program");
+							compiler.Generate((SymbolString)$"mov {type.SizeSpec.ToNasm()}" + "[" + compiler.ResolveSymbol(name) + "]" + "," + Resolve((JsonProperty)value, compiler), "program");
 					}
 					else
 					{
@@ -217,7 +217,7 @@ namespace OrganisedAssembly
 					if(pass == CompilationStep.DeclareGlobalSymbols)
 						compiler.DeclareConstant(name, GetLabelString(compiler, name));
 					else if(pass == CompilationStep.GenerateCode)
-						compiler.Generate(compiler.ResolveSymbol(name) + ": resb" + Resolve(size, compiler), "uninitialised");
+						compiler.Generate(compiler.ResolveSymbol(name) + ":" + "resb" + Resolve(size, compiler), "uninitialised");
 			});
 		}
 
@@ -255,7 +255,7 @@ namespace OrganisedAssembly
 				if(pass == CompilationStep.DeclareGlobalSymbols)
 					compiler.DeclareConstant(name, GetLabelString(compiler, name));
 				else if(pass == CompilationStep.GenerateCode)
-					compiler.Generate(compiler.ResolveSymbol(name) + ": incbin" + ('"' + Path.GetFullPath(Path.Combine(Path.GetDirectoryName(compiler.CurrentFile), filePath.Substring(1, filePath.Length - 2))) + '"'), "data");
+					compiler.Generate(compiler.ResolveSymbol(name) + ":" + "incbin" + ('"' + Path.GetFullPath(Path.Combine(Path.GetDirectoryName(compiler.CurrentFile), filePath.Substring(1, filePath.Length - 2))) + '"'), "data");
 			});
 		}
 	}

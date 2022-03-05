@@ -292,14 +292,14 @@ namespace OrganisedAssembly
 			if(currentPass != CompilationStep.GenerateCode)
 				throw new InvalidOperationException($"Attempted to set register alias during pass {currentPass}.");
 
-			if(CurrentScope.GetSymbol(name) is AliasSymbol existing)
+			if(CurrentScope.GetSymbol(name) is RegisterSymbol existing)
 			{
 				existing.Assign(register);
 				return existing.Register;
 			}
 			else
 			{
-				AliasSymbol newAlias = new AliasSymbol(register);
+				RegisterSymbol newAlias = new RegisterSymbol(register);
 				CurrentScope.DeclareSymbol(name, newAlias);
 				return newAlias.Register;
 			}

@@ -7,46 +7,55 @@ namespace OrganisedAssembly.Win64
 	class Win64Converter : BaseConverter
 	{
 		private BaseRegister[] parameterRegisters = new BaseRegister[] { BaseRegister.RCX, BaseRegister.RDX, BaseRegister.R8, BaseRegister.R9 };
-		private String[] parameterRegistersW = new String[] { "cx", "dx", "r8w", "r9w" };
-
-		private void GenerateShuffle(List<(Register src, Register dst)> moves, ICompiler compiler)
+		
+		private void GenerateMoves(List<(Operand src, Operand dst)> moves, ICompiler compiler)
 		{
-			while(moves.Count != 0)
+			// enumerate all source registers for all moves
+			List<BaseRegister>[] sourceRegisters = new List<BaseRegister>[moves.Count];
+			for(int i = 0; i < moves.Count; i++)
 			{
-				int i = moves.FindIndex(x => !moves.Exists(y => y.src.OperandEquals(x.dst)));
-				if(i != -1)
-				{
-					(Register source, Register dest) = moves[i];
-					moves.RemoveAt(i);
-					compiler.Generate("mov" + dest.Nasm + "," + source.Nasm, "program");
-				}
-				else
-				{
-					(Register source, Register dest) = moves[0];
-					moves.RemoveAt(0);
-					if(source.OperandEquals(dest)) // trivial moves are cycles too!
-						continue;
-
-					// because only cycles are left in the move graph now, there is exactly one move that needs to be updated
-					i = moves.FindIndex(x => x.src.OperandEquals(dest));
-					if(moves[i].src.size > source.size) // make sure no values are split up
-					{
-						source = new Register(source.baseRegister, moves[i].src.size);
-						dest = new Register(dest.baseRegister, moves[i].src.size);
-					}
-					moves[i] = (new Register(source.baseRegister, moves[i].src.size), moves[i].dst);
-
-					compiler.Generate("xchg" + dest.Nasm + "," + source.Nasm, "program");
-				}
+				List<BaseRegister> registers = new List<BaseRegister>();
+				if(moves[i].src is Register reg)
+					registers.Add(reg.baseRegister);
+				if(moves[i].src is MemoryAddress sm)
+					registers.AddRange(sm.EnumerateRegisters());
+				if(moves[i].dst is MemoryAddress dm)
+					registers.AddRange(dm.EnumerateRegisters());
+				sourceRegisters[i] = registers;
 			}
-		}
 
-		// TODO: new GenerateShuffle() function
-		// 1. determine per move which registers are used as source (either directly or in a memory reference)
-		// 2. topologically sort moves such that a move that modifies a register is dependent on all moves that use that register as a source
-		// 3. throw an exception if there's a cycle, that's a problem to be solved later
-		// 4. execute all moves in topological order
-		// TODO: use this new function to also implement 'params Array<T>' style arguments
+			// setup a toplogical ordering of the moves
+			TopologicalSort<(Operand src, Operand dst)> moveOrder = new TopologicalSort<(Operand src, Operand dst)>();
+			for(int i = 0; i < moves.Count; i++)
+			{
+				moveOrder.AddNode(moves[i]);
+
+				if(moves[i].dst is Register dest) // this move is dependent on all moves that read from its destination register
+					for(int j = 0; j < moves.Count; j++)
+						if(j != i && sourceRegisters[j].Contains(dest.baseRegister))
+							moveOrder.AddEdge(moves[j], moves[i]);
+				if(moves[i].src is MemoryAddress && moves[i].dst is MemoryAddress) // same deal for moves that require RAX as a scratch register
+					for(int j = 0; j < moves.Count; j++)
+						if(j != i && sourceRegisters[j].Contains(BaseRegister.RAX))
+							moveOrder.AddEdge(moves[j], moves[i]);
+			}
+			
+			// execute the moves
+			foreach((Operand src, Operand dst) in moveOrder.SortWithException(new LanguageException("Impossible sequence of moves required.")))
+				if(src is MemoryAddress srcMem && dst is MemoryAddress)
+				{
+					SymbolString rax = new Register(BaseRegister.RAX, dst.size).Nasm;
+					if(srcMem.isAccess)
+						compiler.Generate("mov" + rax + "," + src.Nasm, "program");
+					else
+						compiler.Generate("lea" + rax + "," + "[" + srcMem.address + "]", "program");
+					compiler.Generate("mov" + dst.Nasm + "," + rax, "program");
+				}
+				else if(src is MemoryAddress addr && !addr.isAccess)
+					compiler.Generate("lea" + dst.Nasm + "," + "[" + addr.address + "]", "program");
+				else
+					compiler.Generate("mov" + dst.Nasm + "," + src.Nasm, "program");
+		}
 
 		/// <summary>
 		/// Generates a function call according to the Win64 ABI.
@@ -71,60 +80,21 @@ namespace OrganisedAssembly.Win64
 			// declare usage of stack space
 			compiler.MoveStackPointer(-argumentStack);
 
-			// shuffle parameters into the right registers
-			List<SymbolString> lines = new List<SymbolString>();
-
-			// register/immediate-to-stack
+			// enumerate moves and generate them
+			List<(Operand src, Operand dst)> moves = new List<(Operand src, Operand dst)>();
+			for(int i = 0; i < 4 && i < arguments.Length; i++)
+				if(i >= 2 && arguments[i].size == SizeSpecifier.BYTE)
+					moves.Add((arguments[i].Resize(SizeSpecifier.WORD), new Register(parameterRegisters[i], SizeSpecifier.WORD)));
+				else
+					moves.Add((arguments[i], new Register(parameterRegisters[i], arguments[i] is MemoryAddress mem && !mem.isAccess ? SizeSpecifier.QWORD : arguments[i].size)));
 			for(int i = 4; i < arguments.Length; i++)
-				if(arguments[i] is Register || arguments[i] is Immediate)
-					lines.Add($"mov {arguments[i].size.ToNasm()} [rsp + {i * 8}], {arguments[i].Nasm}");
+				moves.Add((arguments[i], new MemoryAddress($"rsp + {i * 8}", arguments[i] is MemoryAddress mem && !mem.isAccess ? SizeSpecifier.QWORD : arguments[i].size)));
+			GenerateMoves(moves, compiler);
 
-			// register-to-register
-			List<(Register src, Register dst)> moves = new List<(Register src, Register dst)>();
-			for(int i = 0; i < 4 && i < arguments.Length; i++)
-				if(arguments[i] is Register arg)
-				{
-					Register source = arg.size == SizeSpecifier.BYTE ? new Register(arg.baseRegister, SizeSpecifier.WORD) : arg;
-					Register dest = new Register(parameterRegisters[i], source.size);
-					moves.Add((source, dest));
-				}
-			GenerateShuffle(moves, compiler);
-
-			// handle edge-cases in byte arguments
-			for(int i = 0; i < 4 && i < arguments.Length; i++)
-				if(arguments[i] is Register arg && arg.size == SizeSpecifier.BYTE)
-					if(arg.registerName.EndsWith('h'))
-						lines.Add($"shr {parameterRegistersW[i]}, 8");
-
-			// memory/reference/immediate-to-register (TODO: anything non-stack has potentially been trashed in the preceding steps, detect this and throw exception)
-			for(int i = 0; i < 4 && i < arguments.Length; i++)
-				if(arguments[i] is not Register)
-					if(arguments[i] is MemoryAddress arg && !arg.isAccess) // can be 'lea'-ed directly into the target register
-						lines.Add($"lea {parameterRegisters[i].ToNasm()}, [" + arg.address + "]");
-					else
-					{
-						SizeSpecifier size = (i >= 2 && arguments[i].size == SizeSpecifier.BYTE) ? SizeSpecifier.WORD : arguments[i].size;
-						Register dest = new Register(parameterRegisters[i], size);
-						lines.Add($"mov {dest.Nasm}," + arguments[i].Resize(dest.size).Nasm); // TODO: throw error if the destination register size is upgraded but the argument is too large for the original size
-					}
-
-			// memory-to-stack: use rax as scratch register since it is volatile under Win64
-			for(int i = 4; i < arguments.Length; i++)
-				if(arguments[i] is MemoryAddress arg)
-					if(arg.isAccess)
-					{
-						Register rax = new Register(BaseRegister.RAX, arguments[i].size);
-						lines.Add($"mov {rax.Nasm}," + arguments[i].Nasm);
-						lines.Add($"mov [rsp + {i * 8}], {rax.Nasm}");
-					}
-					else
-					{
-						lines.Add("lea rax, [" + arg.address + "]");
-						lines.Add($"mov [rsp + {i * 8}], rax");
-					}
-
-			foreach(SymbolString line in lines)
-				compiler.Generate(line, "program");
+			// fix edge case
+			for(int i = 2; i < 4 && i < arguments.Length; i++)
+				if(arguments[i] is Register r && r.registerName.EndsWith('h'))
+					compiler.Generate((SymbolString)"shr" + (i == 2 ? "r8w" : "r9w") + "," + "8", "program");
 
 			// make the call and clean up stack
 			compiler.Generate("call" + function.Nasm, "program");
@@ -164,7 +134,7 @@ namespace OrganisedAssembly.Win64
 						// move register only if necessary
 						if(!(retOp is Register reg && reg.baseRegister == BaseRegister.RAX && reg.registerName != "ah"))
 							if(retOp is MemoryAddress mem && !mem.isAccess)
-								compiler.Generate("lea rax, [" + mem.address + "]", "program");
+								compiler.Generate("lea rax," + "[" + mem.address + "]", "program");
 							else
 							{
 								Register rax = new Register(BaseRegister.RAX, retOp.size);

@@ -45,7 +45,9 @@ namespace OrganisedAssembly
 			("singleQuoteString", str => StringToNasm(str.Flatten())),
 			("sizeof", sizeOf => SizeOf(sizeOf, compiler).ToString()),
 			("identifierPath", id => compiler.ResolveSymbol(new UnresolvedPath(id))),
-			("aliasDecl", alias => compiler.ResolveSymbol(alias.GetNonterminal("name")?.Flatten() ?? throw new LanguageException($"Encountered malformed alias declaration: '{alias.Flatten()}'.")))
+			("aliasDecl", alias => compiler.ResolveSymbol(alias.GetNonterminal("name")?.Flatten() ?? throw new LanguageException($"Encountered malformed alias declaration: '{alias.Flatten()}'."))),
+			("gpRegister", reg => RegisterSymbol.lookup[reg.Flatten()]),
+			("controlRegister", reg => RegisterSymbol.lookup[reg.Flatten()]),
 		});
 
 		protected String GetLabelString(ICompiler compiler, String name)
@@ -238,7 +240,9 @@ namespace OrganisedAssembly
 				if(MemoryReferenceToPath(arg, compiler) is Identifier[] path)
 				{
 					Symbol var = compiler.ResolveSymbol(path);
-					if(var.Size == SizeSpecifier.NONE)
+					if(var is RegisterSymbol)
+						return new MemoryAddress(var, SizeSpecifier.NONE);
+					else if(var.Size == SizeSpecifier.NONE)
 						throw new LanguageException($"No size specified for '{name}'.");
 					return new MemoryAddress(var, var.Size);
 				}
@@ -250,7 +254,7 @@ namespace OrganisedAssembly
 			{
 				// check if it's an aliased register
 				if(ExpressionToPath((JsonProperty)arg.GetNonterminal("expr"), compiler) is Identifier[] path)
-					if(compiler.ResolveSymbol(path) is AliasSymbol alias)
+					if(compiler.ResolveSymbol(path) is RegisterSymbol alias)
 						return alias.Register;
 
 				// use explicit or expected size
@@ -268,7 +272,7 @@ namespace OrganisedAssembly
 			}
 			else if(arg.Name == "name") // only used to support aliased registers
 			{
-				if(compiler.ResolveSymbol(arg.Flatten()) is AliasSymbol alias)
+				if(compiler.ResolveSymbol(arg.Flatten()) is RegisterSymbol alias)
 					return alias.Register;
 				else
 					throw new LanguageException($"Argument '{name}': expected '{arg.Flatten()}' to be an aliased register, but it wasn't.");
