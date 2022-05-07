@@ -159,6 +159,9 @@ namespace OrganisedAssembly
 			foreach(Symbol s in symbols)
 			{
 				String str = s.Nasm;
+				if(str == null || str.Length == 0)
+					continue;
+
 				if(comma.Contains(str))
 				{
 					builder.Append(str);
@@ -180,6 +183,12 @@ namespace OrganisedAssembly
 					builder.Append(str);
 					space = true;
 					noSpace = false;
+				}
+				else if(str.StartsWith('\t') && str.EndsWith('\t'))
+				{
+					builder.Append(str);
+					space = false;
+					noSpace = true;
 				}
 				else
 				{

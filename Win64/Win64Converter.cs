@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace OrganisedAssembly.Win64
 {
-	class Win64Converter : BaseConverter
+	class Win64Converter : ProgramConverter
 	{
 		private BaseRegister[] parameterRegisters = new BaseRegister[] { BaseRegister.RCX, BaseRegister.RDX, BaseRegister.R8, BaseRegister.R9 };
 		
@@ -160,7 +160,7 @@ namespace OrganisedAssembly.Win64
 			});
 		}
 
-		protected override void GenerateFunction(String name, (ValueType type, String name)[] parameters, JsonProperty body, LinkedList<CompilerAction> program)
+		protected override void GenerateFunction(String name, Parameter[] parameters, JsonProperty body, LinkedList<CompilerAction> program)
 		{
 			// prologue
 			program.AddLast((compiler, pass) =>
@@ -175,10 +175,10 @@ namespace OrganisedAssembly.Win64
 						// declare a function placeholder symbol if the function has parameters
 						FunctionPlaceholder placeholder = compiler.DeclareFunctionPlaceholder(name, parameters, (placeholder) =>
 						{
-							(ValueType type, String name)[] parameters = (placeholder as FunctionPlaceholder)?.parameters
-																		 ?? throw new InvalidOperationException($"Encountered wrong placeholder symbol type for function '{name}'.");
-							foreach((ValueType type, String name) in parameters)
-								type.ResolveDependency();
+							Parameter[] parameters = (placeholder as FunctionPlaceholder)?.parameters
+													 ?? throw new InvalidOperationException($"Encountered wrong placeholder symbol type for function '{name}'.");
+							foreach(Parameter p in parameters)
+								p.type.ResolveDependency();
 							FunctionMetadata metadata = new FunctionMetadata(parameters);
 							return new FunctionSymbol(label, metadata);
 						});
@@ -190,25 +190,27 @@ namespace OrganisedAssembly.Win64
 				{
 					// declare dependencies if the function has parameters
 					if(compiler.ResolveSymbol(name) is FunctionPlaceholder placeholder)
-						foreach((ValueType type, String name) in placeholder.parameters)
-							type.DeclareDependency(placeholder, compiler);
+						foreach(Parameter p in placeholder.parameters)
+							p.type.DeclareDependency(placeholder, compiler);
 
 					compiler.EnterLocal(name);
 				}
 				else if(pass == CompilationStep.GenerateCode)
 				{
-					compiler.Generate(compiler.ResolveSymbol(name) + ":", "program");
+					String fullPath = String.Join<Identifier>('.', compiler.GetCurrentPath());
+					fullPath += fullPath.Length > 0 ? '.' + name : name;
+					compiler.Generate(compiler.ResolveSymbol(name) + ": ;" + fullPath, "program"); // add the full path as a comment after the label
 					compiler.EnterLocal(name);
 					compiler.MoveStackPointer(-8); // declare stack space occupied by return address
 
 					// declare all parameters and move them to the shadow space
 					FunctionSymbol function = compiler.ResolveSymbol(name) as FunctionSymbol
 											  ?? throw new InvalidOperationException($"Attempted to generate code while no symbol was defined for function '{name}'.");
-					(ValueType type, String name)[] solvedParameters = function.Metadata.parameters;
-					for(int i = 0; i < solvedParameters.Length; i++)
+					Parameter[] parameters = function.Metadata.parameters;
+					for(int i = 0; i < parameters.Length; i++)
 					{
 						int offset = 8 + i * 8;
-						compiler.DeclareExistingStackVariable(solvedParameters[i].type, solvedParameters[i].name, offset);
+						compiler.DeclareExistingStackVariable(parameters[i].type, parameters[i].name, offset);
 						if(i < 4) // handle register / shadow space parameters
 							compiler.Generate($"mov [rsp + {offset}], {parameterRegisters[i].ToNasm()}", "program"); // TODO: adapt size of register when possible?
 					}

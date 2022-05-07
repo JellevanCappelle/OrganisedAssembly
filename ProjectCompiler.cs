@@ -35,13 +35,13 @@ namespace OrganisedAssembly
 	abstract class ProjectCompiler
 	{
 		protected readonly ProjectSettings project;
-		protected readonly ActionConverter converter;
+		protected readonly ProgramConverter converter;
 		protected readonly String inputFolder;
 		protected readonly String tempFolder;
 		protected readonly String outputFile;
 		protected readonly String cacheFolder;
 
-		public ProjectCompiler(ProjectSettings project, ActionConverter converter)
+		public ProjectCompiler(ProjectSettings project, ProgramConverter converter)
 		{
 			this.project = project;
 			this.converter = converter;

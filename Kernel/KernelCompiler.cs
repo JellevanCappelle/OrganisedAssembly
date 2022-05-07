@@ -14,7 +14,7 @@ namespace OrganisedAssembly.Kernel
 		protected readonly String templatePath = compilerDir + "\\Kernel\\template.asm";
 		protected readonly String compileScript = compilerDir + "\\Kernel\\compile.bat";
 
-		public KernelCompiler(ProjectSettings project, ActionConverter converter) : base(project, converter)
+		public KernelCompiler(ProjectSettings project, ProgramConverter converter) : base(project, converter)
 		{
 			if(project.runtime != "none")
 				throw new NotImplementedException("Attempted to use a runtime when compiling a kernel.");

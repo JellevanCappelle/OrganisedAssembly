@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace OrganisedAssembly
 {
-	abstract partial class BaseConverter : ActionConverter
+	abstract partial class ProgramConverter
 	{
 		private static Dictionary<String, SizeSpecifier> sizeLookup = new Dictionary<String, SizeSpecifier>
 		{
@@ -24,7 +24,7 @@ namespace OrganisedAssembly
 			{ SizeSpecifier.QWORD, 'q' }
 		};
 
-		protected abstract void GenerateFunction(String name, (ValueType type, String name)[] parameters, JsonProperty body, LinkedList<CompilerAction> program);
+		protected abstract void GenerateFunction(String name, Parameter[] parameters, JsonProperty body, LinkedList<CompilerAction> program);
 		protected abstract void GenerateABICall(Operand function, FunctionMetadata metadata, Operand[] arguments, Operand[] returnTargets, ICompiler compiler);
 		protected abstract void ConvertABIReturn(JsonProperty ret, LinkedList<CompilerAction> program);
 
@@ -50,10 +50,7 @@ namespace OrganisedAssembly
 			("controlRegister", reg => RegisterSymbol.lookup[reg.Flatten()]),
 		});
 
-		protected String GetLabelString(ICompiler compiler, String name)
-		{
-			return "L" + compiler.GetUID() + "_" + String.Join<Identifier>('_', compiler.GetCurrentPath()) + "_" + name;
-		}
+		protected String GetLabelString(ICompiler compiler, String name) => "L" + compiler.GetUID() + "_" + name;
 
 		public static SizeSpecifier ParseSize(String str) // TODO: put this in a more logical place
 		{
@@ -348,7 +345,7 @@ namespace OrganisedAssembly
 								?? throw new LanguageException("Malformed function declaration."));
 			JsonProperty body = function.GetNonterminal("localBody")
 								?? throw new LanguageException("Missing function body.");
-			(ValueType size, String name)[] parameters = ParseParameterList(declaration.GetNonterminal("parameterList"))?.ToArray();
+			Parameter[] parameters = ParseParameterList(declaration.GetNonterminal("parameterList"))?.ToArray();
 
 			// declare the function as a template to avoid compilation if possible
 			Template template = new Template(name, () =>
@@ -454,13 +451,13 @@ namespace OrganisedAssembly
 			});
 		}
 
-		protected IEnumerable<(ValueType size, String name)> ParseParameterList(JsonProperty? parameterList) => parameterList?.GetNonterminals("parameter").Select(par =>
+		protected IEnumerable<Parameter> ParseParameterList(JsonProperty? parameterList) => parameterList?.GetNonterminals("parameter").Select(par =>
 			{
 				ValueType size = new ValueType(par.GetNonterminal("sizeOrType")
 								 ?? throw new LanguageException($"Malformed parameter: {par.Flatten()}."));
 				String name = par.GetNonterminal("name")?.Flatten()
 							  ?? throw new LanguageException($"Malformed parameter: {par.Flatten()}.");
-				return (size, name);
+				return new Parameter(size, name, par.GetNonterminal("paramsKeyword") != null);
 			});
 
 		void ConverNamespace(JsonProperty node, LinkedList<CompilerAction> program)
@@ -653,8 +650,8 @@ namespace OrganisedAssembly
 
 			
 			// construct the full parameter list (including the implicit 'this' parameter if the method is non-static)
-			IEnumerable<(ValueType type, String name)> explicitParameters = ParseParameterList(declaration.GetNonterminal("parameterList")) ?? new (ValueType type, String name)[0];
-			(ValueType type, String name)[] parameters = (staticMethod ? explicitParameters : explicitParameters.Prepend((null, "this"))).ToArray(); // insert temporary 'this' parameter without type, to be replaced later
+			IEnumerable<Parameter> explicitParameters = ParseParameterList(declaration.GetNonterminal("parameterList")) ?? new Parameter[0];
+			Parameter[] parameters = (staticMethod ? explicitParameters : explicitParameters.Prepend(new())).ToArray(); // insert temporary 'this' parameter, to be replaced later
 
 			// declare the method as a template to avoid compilation if possible
 			Template template = new Template(name, () =>
@@ -667,7 +664,7 @@ namespace OrganisedAssembly
 					code.AddFirst((compiler, pass) =>
 					{
 						if(pass == CompilationStep.DeclareGlobalSymbols)
-							parameters[0].type = new ValueType(compiler.GetCurrentAssociatedType());
+							parameters[0] = new(compiler.GetCurrentAssociatedType(), "this");
 					});
 				return code;
 			});

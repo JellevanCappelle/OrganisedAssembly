@@ -64,7 +64,7 @@ namespace OrganisedAssembly
 			if(CompilerSettings.Verbose) Console.WriteLine(project);
 
 			// compile
-			ActionConverter converter =
+			ProgramConverter converter =
 				project.abi == "kernel" ? new KernelConverter() :
 				project.abi == "win64" ? new Win64Converter() :
 				throw new NotImplementedException("ABI not implemented: " + project.abi);

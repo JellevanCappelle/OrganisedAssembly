@@ -46,11 +46,12 @@ for suf in conditionSuffixes:
 sizeKeywords = ["byte", "word", "dword", "qword"]
 stringSizeKeywords = [kwd + 's' for kwd in sizeKeywords]
 
-miscKeywords = ["constant", "string", "cstring", "function", "method", "using", "namespace", "ref", "enum", "struct", "sizeof", "alias", "binary", "ref", "value"]
+miscKeywords = ["constant", "string", "cstring", "function", "method", "using", "namespace", "ref", "enum", "struct", "sizeof", "alias", "binary", "ref", "value", "params"]
 nonIdentifiers = instructionKeyword + ifKeywords + forKeywords + whileKeywords + sizeKeywords + stringSizeKeywords + miscKeywords
 
-
 # define language rules
+
+ARRAY_TYPE = "Array"
 
 # registers
 def gpRegister(): return GPRs
@@ -149,7 +150,9 @@ def abiCall(): return Optional(abiAssignment), identifierPath, '(', Optional(arg
 def abiReturn(): return "return", Optional(argumentList)
 
 # functions
-def parameter(): return sizeOrType, '[', name, ']'
+def paramsKeyword(): return "params"
+parameterType = [sizeOrType, (paramsKeyword, ARRAY_TYPE, '<', sizeOrType, '>')]
+def parameter(): return parameterType, '[', name, ']'
 def parameterList(): return parameter, ZeroOrMore(',', parameter)
 def functionDeclaration(): return "function", templateName, '(', Optional(parameterList), ')'
 def emptySpace(): return OneOrMore(emptyStatement, '\n')

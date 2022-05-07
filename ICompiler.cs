@@ -58,7 +58,7 @@ namespace OrganisedAssembly
 		void DeclareConstant(Identifier name, String nasmRepresentation, ValueType type = null);
 		void DeclareFunction(Identifier name, String label, FunctionMetadata metadata);
 		Placeholder DeclarePlaceholder(Identifier name, Func<Placeholder, Symbol> resolve);
-		FunctionPlaceholder DeclareFunctionPlaceholder(Identifier name, (ValueType, String)[] parameters, Func<Placeholder, FunctionSymbol> resolve);
+		FunctionPlaceholder DeclareFunctionPlaceholder(Identifier name, Parameter[] parameters, Func<Placeholder, FunctionSymbol> resolve);
 		void AddAnonymousPlaceholder(Placeholder placeholder);
 		void DeclareDependency(Placeholder dependency, Placeholder dependent);
 		void DeclareType(Identifier name, TypeSymbol type);

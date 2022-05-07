@@ -44,18 +44,24 @@ namespace OrganisedAssembly
 			}
 		}
 
+		public readonly bool indent = false;
 		private readonly bool owner = false;
 		private readonly StreamWriter target;
 		private readonly StringWriter tmpTarget = new StringWriter();
 		private LinkedList<BackLogItem> backlog = new LinkedList<BackLogItem>();
 
-		public Section(StreamWriter target)
+		public Section(StreamWriter target, bool indent = false)
 		{
 			this.target = target;
+			this.indent = indent;
 			owner = true;
 		}
 
-		public Section(Section section) => target = section.target;
+		public Section(Section section)
+		{
+			target = section.target;
+			indent = section.indent;
+		}
 
 		public void Generate(String line)
 		{

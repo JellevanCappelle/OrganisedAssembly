@@ -28,10 +28,10 @@ namespace OrganisedAssembly
 
 		public Compiler(Dictionary<String, StreamWriter> sections)
 		{
-			this.verbose = CompilerSettings.Verbose;
+			verbose = CompilerSettings.Verbose;
 			this.sections = new Dictionary<String, Section>();
 			foreach(KeyValuePair<String, StreamWriter> section in sections)
-				this.sections[section.Key] = new Section(section.Value);
+				this.sections[section.Key] = new Section(section.Value, section.Key == "program"); // mark the section called 'program' to be indented
 			scopeStack.Push(rootScope = new GlobalScope());
 		}
 
@@ -156,6 +156,7 @@ namespace OrganisedAssembly
 					throw new InvalidOperationException($"Attempted to enter non-existent local scope in pass {currentPass}.");
 
 			scopeStack.Push(scope);
+			indents++;
 		}
 
 		public void ExitLocal()
@@ -168,9 +169,14 @@ namespace OrganisedAssembly
 
 			Local.ResetAnonymous();
 			scopeStack.Pop();
+			indents--;
 		}
 
-		public void EnterAnonymous() => scopeStack.Push(CurrentScope.GetNextAnonymous());
+		public void EnterAnonymous()
+		{
+			scopeStack.Push(CurrentScope.GetNextAnonymous());
+			indents++;
+		}
 
 		public void ExitAnonymous()
 		{
@@ -182,6 +188,7 @@ namespace OrganisedAssembly
 
 			CurrentScope.ResetAnonymous();
 			scopeStack.Pop();
+			indents--;
 		}
 
 		public long GetUID() => uid++;
@@ -236,7 +243,7 @@ namespace OrganisedAssembly
 			return placeholder;
 		}
 
-		public FunctionPlaceholder DeclareFunctionPlaceholder(Identifier name, (ValueType, String)[] parameters, Func<Placeholder, FunctionSymbol> resolve)
+		public FunctionPlaceholder DeclareFunctionPlaceholder(Identifier name, Parameter[] parameters, Func<Placeholder, FunctionSymbol> resolve)
 		{
 			if(IsLocal)
 				throw new InvalidOperationException("Attempted to declare a function placeholder symbol in a local scope.");
@@ -389,17 +396,26 @@ namespace OrganisedAssembly
 		public void Generate(SymbolString line, String section)
 		{
 			if(!sections.ContainsKey(section)) throw new LanguageException($"Attempted to write to non-existent section {section}.");
+			Section target = sections[section];
+			
 			line.ResolveAliases(); // ensure that any aliased registers are correct, even in the future when they might have been changed
+			if(target.indent)
+				line = new String('\t', indents) + line;
+			
 			if(!line.IsStackReference)
-				sections[section].Generate(line.ToString());
+				target.Generate(line.ToString());
 			else
-				sections[section].Generate(line, CompilerEvent.StackSizeSet);
+				target.Generate(line, CompilerEvent.StackSizeSet);
 		}
 
 		public void Generate(SymbolString futureLine, CompilerEvent compilerEvent, String section)
 		{
 			if(!sections.ContainsKey(section)) throw new LanguageException($"Attempted to write to non-existent section {section}.");
-			sections[section].Generate(futureLine, compilerEvent);
+			Section target = sections[section];
+			
+			if(target.indent)
+				futureLine = new String('\t', indents) + futureLine;
+			target.Generate(futureLine, compilerEvent);
 		}
 	}
 }

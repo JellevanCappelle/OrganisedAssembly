@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace OrganisedAssembly
 {
-	abstract partial class BaseConverter : ActionConverter
+	abstract partial class ProgramConverter
 	{
 		protected String InvertCondition(String condition) => condition.StartsWith('n') ? condition.Substring(1) : 'n' + condition;
 

@@ -22,6 +22,7 @@ namespace OrganisedAssembly
 		protected CompilationStep currentPass = CompilationStep.None;
 		protected int currentLine = 0;
 		protected int currentColumn = 0;
+		protected int indents = 0;
 
 		public ICompilerState GetState() => new CompilerState(this);
 

@@ -76,7 +76,7 @@ namespace OrganisedAssembly
 				case "identifierPath":
 					return new UnresolvedPath(param);
 				case "sizeSpecifier":
-					return new SizeParam(BaseConverter.ParseSize(param.Flatten()));
+					return new SizeParam(ProgramConverter.ParseSize(param.Flatten()));
 				case "refType":
 				case "valueType":
 					return new RefOrValuePath(param);

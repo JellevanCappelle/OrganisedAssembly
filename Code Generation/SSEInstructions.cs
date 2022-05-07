@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace OrganisedAssembly
 {
-	abstract partial class BaseConverter : ActionConverter
+	abstract partial class ProgramConverter
 	{
 		void ConvertSSEInstruction(JsonProperty node, LinkedList<CompilerAction> program)
 		{

@@ -16,7 +16,7 @@ namespace OrganisedAssembly.Win64
 		protected readonly String stdioCache = compilerDir + "\\Win64\\Win64StdIO.json";
 		protected readonly String libPath;
 		
-		public Win64Compiler(ProjectSettings project, ActionConverter converter, String libPath = null) : base(project, converter)
+		public Win64Compiler(ProjectSettings project, ProgramConverter converter, String libPath = null) : base(project, converter)
 		{
 			if(libPath != null)
 				this.libPath = libPath;

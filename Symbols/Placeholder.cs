@@ -45,11 +45,11 @@ namespace OrganisedAssembly
 
 	class FunctionPlaceholder : Placeholder
 	{
-		public readonly (ValueType type, String name)[] parameters;
+		public readonly Parameter[] parameters;
 
-		public FunctionPlaceholder(Identifier name, (ValueType type, String name)[] parameters, GlobalScope scope, Func<Placeholder, Symbol> resolve)
+		public FunctionPlaceholder(Identifier name, Parameter[] parameters, GlobalScope scope, Func<Placeholder, Symbol> resolve)
 			: base(name, scope, resolve)
-			=> this.parameters = parameters.Select(x => (new ValueType(x.type), x.name)).ToArray(); // deep-copy the parameter types
+			=> this.parameters = parameters.Select(x => new Parameter(new ValueType(x.type), x.name)).ToArray(); // deep-copy the parameter types
 	}
 
 	class StructLayoutSymbol : Placeholder

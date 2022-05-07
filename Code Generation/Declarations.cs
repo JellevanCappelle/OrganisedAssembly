@@ -5,7 +5,7 @@ using System.IO;
 
 namespace OrganisedAssembly
 {
-	abstract partial class BaseConverter : ActionConverter
+	abstract partial class ProgramConverter
 	{
 		void ConvertDeclaration(JsonProperty node, LinkedList<CompilerAction> program)
 		{

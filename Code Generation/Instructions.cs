@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace OrganisedAssembly
 {
-	abstract partial class BaseConverter : ActionConverter
+	abstract partial class ProgramConverter
 	{
 		enum SizePriority
 		{
